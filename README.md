@@ -1,0 +1,69 @@
+# herdr-orch
+
+An agent skill that turns one [herdr](https://herdr.dev) tab into a small team of coding agents. The pane you start it from is the orchestrator. It opens worker panes beside itself as the work needs them, briefs each worker, waits for results without polling, and closes the panes when the work is done.
+
+```
+┌──────────────┬──────────────┬──────────────┐
+│ orchestrator │ worker       │ worker       │
+├──────────────┼──────────────┼──────────────┤
+│ worker       │ worker       │ worker       │
+└──────────────┴──────────────┴──────────────┘
+```
+
+Workers can be any agent kind herdr recognizes: Claude Code, Codex, Gemini CLI, Antigravity CLI, OpenCode and others. You can mix kinds in one tab.
+
+## Requirements
+
+- herdr 0.9.5 or later, with the agents you want to use installed
+- Node.js 18 or later
+- An agent that supports skills (Claude Code, Codex, Cursor, Gemini CLI and others)
+
+## Install
+
+```bash
+npx skills add jjongkwann/herdr-orch
+```
+
+Add `-g` to install it for your user instead of the current project, and `-a <agent>` to choose the agents.
+
+## Use
+
+1. Open a new herdr tab and start your agent in it.
+2. Ask for the work, for example `/herdr-orch Add input validation to the signup API and have a second worker review the diff` in Claude Code, or "use the herdr-orch skill to ..." in other agents.
+
+The orchestrator calls `scripts/orch.mjs`, which you can also run yourself from a herdr pane:
+
+```
+node scripts/orch.mjs spawn <name> <kind> [--cwd DIR] [--mcp] [-- agent args]
+node scripts/orch.mjs send <name> "<prompt>"
+node scripts/orch.mjs wait [<name>...] [--any] [--timeout SEC]
+node scripts/orch.mjs ask <name> "<prompt>"
+node scripts/orch.mjs ls
+node scripts/orch.mjs stop <name>... | --all
+node scripts/orch.mjs close [--force]
+```
+
+## How it keeps token use down
+
+- `wait` blocks on herdr's agent state, so the orchestrator spends nothing while workers run. Claude Code runs it in the background and is notified when it returns.
+- Each worker writes its full result to a report file. The orchestrator reads only the first few lines and passes paths, not content, between workers.
+- Pane layout, IDs and JSON stay inside the script instead of in the orchestrator's context.
+- Claude Code workers start without MCP servers unless you pass `--mcp`, which keeps their startup context and memory small.
+- Workers are reused for follow-up work in the same area and stopped when their area is done.
+
+## Configuration
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ORCH_GRID` | `2x3` | Rows and columns the tab fills toward; the orchestrator takes one cell |
+| `XDG_STATE_HOME` | `~/.local/state` (`%LOCALAPPDATA%` on Windows) | Where `herdr-orch/` keeps slot state and reports |
+
+To say which agents the orchestrator should prefer, put it in your agent instructions (for example `AGENTS.md`): "When orchestrating with herdr-orch, use Claude Code workers by default and Codex only when asked."
+
+## Status
+
+Tested on macOS with herdr 0.9.5: Claude Code as the orchestrator and as workers end to end, and Codex and Antigravity CLI workers for start and stop. The script avoids shell-specific commands so it can run on Windows and Linux, but those platforms have not been tested end to end yet.
+
+## License
+
+MIT
