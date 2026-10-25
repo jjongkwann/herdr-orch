@@ -1,6 +1,6 @@
 ---
 name: herdr-orch
-description: Orchestrate coding agents in herdr panes from the current pane. The calling pane stays the orchestrator; worker agents (Claude Code, Codex, Gemini, Antigravity or any other kind herdr supports) open on demand in the same tab, filling a 2x3 grid. Use when the user invokes /herdr-orch or asks to split work across several agents or panes in herdr. Requires HERDR_ENV=1 and Node.js 18 or later.
+description: Orchestrate coding agents in herdr panes from the current pane. The calling pane stays the orchestrator; worker agents (Claude Code, Codex, Gemini, Antigravity or any other kind herdr supports) open on demand in the same tab, in a grid sized to the terminal. Use when the user invokes /herdr-orch or asks to split work across several agents or panes in herdr. Requires HERDR_ENV=1 and Node.js 18 or later.
 ---
 
 # herdr-orch
@@ -9,7 +9,7 @@ You are the orchestrator in pane `$HERDR_PANE_ID`. Plan the work, split it, brie
 
 The helper is `scripts/orch.mjs` in this skill's directory. Run it with Node and an absolute path, for example `node "<skill directory>/scripts/orch.mjs" ls`; it is written `orch` below. For herdr commands it does not cover, read `herdr --skill`.
 
-First run `test "${HERDR_ENV:-}" = 1` (PowerShell: `$env:HERDR_ENV -eq "1"`); if it fails, say you are not inside herdr and stop. Work in a tab of its own: workers fill the tab toward a 2x3 grid (set `ORCH_GRID`, for example `2x4`, to change it), and `orch` refuses when no room is left.
+First run `test "${HERDR_ENV:-}" = 1` (PowerShell: `$env:HERDR_ENV -eq "1"`); if it fails, say you are not inside herdr and stop. Work in a tab of its own. Workers fill the tab toward a grid that fits its current size: every pane keeps at least 80x24 cells (`ORCH_MIN_PANE`) and there are at most five workers (`ORCH_MAX_WORKERS`). `orch ls` shows how many fit, and `spawn` refuses when no room is left.
 
 ## Commands
 

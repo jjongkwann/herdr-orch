@@ -10,6 +10,8 @@ An agent skill that turns one [herdr](https://herdr.dev) tab into a small team o
 └──────────────┴──────────────┴──────────────┘
 ```
 
+The grid follows the tab size. Every pane keeps at least 80x24 cells, so a laptop screen may fit a 2x2 grid and a wide monitor a 2x3 grid; the layout is recomputed each time a worker opens, including after the terminal is resized.
+
 Workers can be any agent kind herdr recognizes: Claude Code, Codex, Gemini CLI, Antigravity CLI, OpenCode and others. You can mix kinds in one tab.
 
 ## Requirements
@@ -55,7 +57,8 @@ node scripts/orch.mjs close [--force]
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ORCH_GRID` | `2x3` | Rows and columns the tab fills toward; the orchestrator takes one cell |
+| `ORCH_MIN_PANE` | `80x24` | Smallest pane, in columns x rows; decides how many panes fit the tab |
+| `ORCH_MAX_WORKERS` | `5` | Upper limit on workers, however large the tab is |
 | `XDG_STATE_HOME` | `~/.local/state` (`%LOCALAPPDATA%` on Windows) | Where `herdr-orch/` keeps slot state and reports |
 
 To say which agents the orchestrator should prefer, put it in your agent instructions (for example `AGENTS.md`): "When orchestrating with herdr-orch, use Claude Code workers by default and Codex only when asked."

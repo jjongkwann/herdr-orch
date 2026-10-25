@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Open, prompt, wait for, stop and close worker agents in herdr panes beside the
 // orchestrator pane. The calling pane is the orchestrator; workers fill the same
-// tab toward a ROWSxCOLS grid (ORCH_GRID, default 2x3), one pane at a time.
+// tab one pane at a time, toward a grid that fits the current tab size.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -24,7 +24,8 @@ const USAGE = `usage: node orch.mjs <command> [options]
                         exit worker agents; their panes stay as free slots
   close [--force]       close free slots (--force also closes busy ones)`;
 
-const [ROWS, COLS] = (process.env.ORCH_GRID || "2x3").split("x").map(Number);
+const MAX_WORKERS = Number(process.env.ORCH_MAX_WORKERS || 5);
+const [MIN_WIDTH, MIN_HEIGHT] = (process.env.ORCH_MIN_PANE || "80x24").split("x").map(Number);
 const STATE_DIR = join(
   process.env.XDG_STATE_HOME ||
     (process.platform === "win32"
@@ -124,29 +125,64 @@ function isFree(pane, agents) {
   return procs.length === 1 && procs[0].pid === info.shell_pid;
 }
 
-// Pick the pane to split so the tab fills toward a ROWS x COLS grid.
-function nextSplit(orchestrator, slots, layout) {
-  const colWidth = layout.area.width / COLS;
-  const rowHeight = layout.area.height / ROWS;
+// How far a pane's shape is from the minimum pane's shape.
+const shapeGap = (width, height) => Math.abs(Math.log(width / height / (MIN_WIDTH / MIN_HEIGHT)));
+
+// Choose the grid for this tab size: the most panes (up to MAX_WORKERS plus the
+// orchestrator) that keep every pane at least MIN_WIDTH x MIN_HEIGHT, then the
+// fewest empty cells, then cells closest to the minimum pane's shape.
+function fitGrid(area) {
+  let best = { rows: 1, cols: 1, panes: 1 };
+  for (let rows = 1; rows <= Math.floor(area.height / MIN_HEIGHT); rows++) {
+    for (let cols = 1; cols <= Math.floor(area.width / MIN_WIDTH); cols++) {
+      const panes = Math.min(rows * cols, MAX_WORKERS + 1);
+      const cells = rows * cols;
+      const gap = shapeGap(area.width / cols, area.height / rows);
+      const bestCells = best.rows * best.cols;
+      if (panes > best.panes || (panes === best.panes &&
+          (cells < bestCells || (cells === bestCells && gap < shapeGap(area.width / best.cols, area.height / best.rows))))) {
+        best = { rows, cols, panes };
+      }
+    }
+  }
+  return best;
+}
+
+// Pick the pane to split so the tab fills toward the grid.
+function nextSplit(orchestrator, slots, layout, grid) {
+  const colWidth = layout.area.width / grid.cols;
+  const rowHeight = layout.area.height / grid.rows;
   const rects = new Map(layout.panes.map((p) => [p.pane_id, p.rect]));
   const cells = (pane) => {
     const r = rects.get(pane);
     return [Math.round(r.width / colWidth), Math.round(r.height / rowHeight)];
   };
+  // A pane spanning several cells splits off one cell, if that cell stays above the minimum.
+  const wideFits = (p) => cells(p)[0] > 1 && rects.get(p).width / cells(p)[0] >= MIN_WIDTH;
+  const tallFits = (p) => cells(p)[1] > 1 && rects.get(p).height / cells(p)[1] >= MIN_HEIGHT;
   const workers = slots.filter((p) => rects.has(p));
-  const wide = workers.filter((p) => cells(p)[0] > 1);
+  const wide = workers.filter(wideFits);
   if (wide.length) {
     const pane = wide.reduce((a, b) => (cells(b)[0] > cells(a)[0] ? b : a));
     return [pane, "right", 1 / cells(pane)[0]];
   }
-  const tall = workers.filter((p) => cells(p)[1] > 1);
+  const tall = workers.filter(tallFits);
   if (tall.length) {
     const pane = tall.reduce((a, b) => (rects.get(b).x < rects.get(a).x ? b : a));
     return [pane, "down", 1 / cells(pane)[1]];
   }
-  const [cols, rows] = cells(orchestrator);
-  if (cols > 1) return [orchestrator, "right", 1 / cols];
-  if (rows > 1) return [orchestrator, "down", 1 / rows];
+  if (wideFits(orchestrator)) return [orchestrator, "right", 1 / cells(orchestrator)[0]];
+  if (tallFits(orchestrator)) return [orchestrator, "down", 1 / cells(orchestrator)[1]];
+  // Panes laid out for another tab size may not match the grid: halve the largest
+  // pane that stays at least the minimum size, keeping the orchestrator for last.
+  const area = (p) => rects.get(p).width * rects.get(p).height;
+  for (const pane of [...workers.sort((a, b) => area(b) - area(a)), orchestrator]) {
+    const { width, height } = rects.get(pane);
+    const options = [["right", width / 2, height], ["down", width, height / 2]]
+      .filter(([, w, h]) => w >= MIN_WIDTH && h >= MIN_HEIGHT)
+      .sort((a, b) => shapeGap(a[1], a[2]) - shapeGap(b[1], b[2]));
+    if (options.length) return [pane, options[0][0], 0.5];
+  }
   return null;
 }
 
@@ -170,9 +206,22 @@ function spawnWorker(positionals, values, extra) {
       saveState(t.tab, t.state);
       t.layout = result(["pane", "layout", "--pane", t.orchestrator]).layout;
     }
-    if (t.state.slots.length >= ROWS * COLS - 1) die("every slot has a worker; stop one first");
-    const split = nextSplit(t.orchestrator, t.state.slots, t.layout);
-    if (!split) die("no room left in this tab; run the orchestrator in a tab of its own");
+    const grid = fitGrid(t.layout.area);
+    const { width, height } = t.layout.area;
+    const fits = grid.panes - 1;
+    if (!fits) die(`this ${width}x${height} tab is too small for a worker; panes need ${MIN_WIDTH}x${MIN_HEIGHT} (ORCH_MIN_PANE)`);
+    if (t.state.slots.length >= fits) die(`no room for another worker: this ${width}x${height} tab fits ${fits}; stop one first`);
+    let split = nextSplit(t.orchestrator, t.state.slots, t.layout, grid);
+    const orchestratorWidth = t.layout.panes.find((p) => p.pane_id === t.orchestrator).rect.width;
+    if (!split && orchestratorWidth - width / grid.cols >= 1) {
+      // After the tab grows, scaled panes can be too narrow to halve; hand the
+      // orchestrator's extra width to the workers and try again.
+      const amount = (orchestratorWidth - width / grid.cols) / width;
+      herdr(["pane", "resize", "--pane", t.orchestrator, "--direction", "left", "--amount", amount.toFixed(4)], { check: false });
+      t.layout = result(["pane", "layout", "--pane", t.orchestrator]).layout;
+      split = nextSplit(t.orchestrator, t.state.slots, t.layout, grid);
+    }
+    if (!split) die("no pane is large enough to split; stop workers and run close so new panes follow the tab size");
     const [target, direction, ratio] = split;
     pane = result([
       "pane", "split", target, "--direction", direction, "--ratio", ratio.toFixed(4),
@@ -347,7 +396,9 @@ function closeSlots(values) {
 function listSlots() {
   const t = openTab();
   const agents = agentsByPane();
-  console.log(`${t.state.slots.length}/${ROWS * COLS - 1} slots`);
+  const grid = fitGrid(t.layout.area);
+  const { width, height } = t.layout.area;
+  console.log(`${t.state.slots.length}/${grid.panes - 1} slots (${grid.rows} rows x ${grid.cols} columns for a ${width}x${height} tab)`);
   for (const pane of t.state.slots) {
     const a = agents.get(pane);
     if (a) console.log(`${pane}  ${a.name || "-"}  ${a.agent}  ${a.agent_status}`);
@@ -356,7 +407,8 @@ function listSlots() {
 }
 
 function main() {
-  if (!(ROWS >= 1 && COLS >= 1 && ROWS * COLS >= 2)) die("ORCH_GRID must look like 2x3");
+  if (!(MAX_WORKERS >= 1)) die("ORCH_MAX_WORKERS must be a positive number");
+  if (!(MIN_WIDTH >= 1 && MIN_HEIGHT >= 1)) die("ORCH_MIN_PANE must look like 80x24");
   let argv = process.argv.slice(2);
   let extra = [];
   const cut = argv.indexOf("--");
