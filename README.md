@@ -33,6 +33,8 @@ Add `-g` to install it for your user instead of the current project, and `-a <ag
 1. Open a new herdr tab and start your agent in it.
 2. Ask for the work, for example `/herdr-orch Add input validation to the signup API and have a second worker review the diff` in Claude Code, or "use the herdr-orch skill to ..." in other agents.
 
+Inside herdr, the agent also uses the skill without being asked when a task has independent parts or a code change should get a second reviewer. Workers are briefed with a role from `references/roles/`: reviewer, implementer, researcher, debugger or planner. Your own instructions about which agents to use and how sparingly take precedence.
+
 The orchestrator calls `scripts/orch.mjs`, which you can also run yourself from a herdr pane:
 
 ```
@@ -41,9 +43,15 @@ node scripts/orch.mjs send <name> "<prompt>"
 node scripts/orch.mjs wait [<name>...] [--any] [--timeout SEC]
 node scripts/orch.mjs ask <name> "<prompt>"
 node scripts/orch.mjs ls
+node scripts/orch.mjs log [--lines N]
+node scripts/orch.mjs lessons
 node scripts/orch.mjs stop <name>... | --all
 node scripts/orch.mjs close [--force]
 ```
+
+`orch` writes each spawn, prompt, result, stop and close to a journal for the tab. `log` prints the current run from it, along with the workers whose last prompt is still open: report not yet read, still working, or exited without a report. The orchestrator runs it after its context is compacted or restarted. When `wait` sees a worker blocked at an approval or question, it shows a herdr notification.
+
+`lessons` prints two Markdown files of lessons, one for the current project (keyed by its git remote) and one for all projects. The orchestrator reads them before it opens the first worker. Before the final `close`, it updates them from the journal: each lesson has a trigger, an action, a confidence and the evidence behind it, such as "Codex workers stop at the trust prompt in new worktrees".
 
 ## How it keeps token use down
 
@@ -59,7 +67,7 @@ node scripts/orch.mjs close [--force]
 |---|---|---|
 | `ORCH_MIN_PANE` | `80x24` | Smallest pane, in columns x rows; decides how many panes fit the tab |
 | `ORCH_MAX_WORKERS` | `5` | Upper limit on workers, however large the tab is |
-| `XDG_STATE_HOME` | `~/.local/state` (`%LOCALAPPDATA%` on Windows) | Where `herdr-orch/` keeps slot state and reports |
+| `XDG_STATE_HOME` | `~/.local/state` (`%LOCALAPPDATA%` on Windows) | Where `herdr-orch/` keeps slot state, journals, lessons and reports |
 
 To say which agents the orchestrator should prefer, put it in your agent instructions (for example `AGENTS.md`): "When orchestrating with herdr-orch, use Claude Code workers by default and Codex only when asked."
 

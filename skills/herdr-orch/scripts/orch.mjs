@@ -4,7 +4,7 @@
 // tab one pane at a time, toward a grid that fits the current tab size.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -20,6 +20,8 @@ const USAGE = `usage: node orch.mjs <command> [options]
   ask <name> <prompt|-> [--timeout SEC] [--lines N]
                         send, then wait for that worker
   ls                    list slots
+  log [--lines N]       show this tab's run: past actions and unfinished work
+  lessons               show the lesson files for this project and for all projects
   stop <name>... | --all
                         exit worker agents; their panes stay as free slots
   close [--force]       close free slots (--force also closes busy ones)`;
@@ -40,7 +42,7 @@ const EXIT_COMMAND = { claude: "/exit", codex: "/quit", agy: "/exit" };
 const contract = (path) => `
 
 ---
-When you finish, write the full result as Markdown to ${path}. Start that file with at most five lines: status (done, blocked or failed), changed files, and a one-line summary. Put the details below them. Then reply with only the report path.`;
+You are a herdr-orch worker: do not open panes or start agents with herdr-orch. When you finish, write the full result as Markdown to ${path}; write this report even if the task says not to change files. Start that file with at most five lines: status (done, blocked or failed), changed files, and a one-line summary. Put the details below them. Then reply with only the report path.`;
 
 function die(message) {
   console.error(`orch: ${message}`);
@@ -95,6 +97,14 @@ function saveState(tab, state) {
   writeFileSync(stateFile(tab), `${JSON.stringify(state, null, 2)}\n`);
 }
 
+// Append-only record of what the orchestrator did in this tab, for `log`.
+const journalFile = (tab) => stateFile(tab).replace(/\.json$/, ".jsonl");
+
+function journal(tab, event) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  appendFileSync(journalFile(tab), `${JSON.stringify({ t: new Date().toISOString(), ...event })}\n`);
+}
+
 // Read the caller's tab, its layout and this script's live slots in it.
 function openTab() {
   if (process.env.HERDR_ENV !== "1") die("not running inside a herdr pane");
@@ -105,6 +115,7 @@ function openTab() {
   try {
     state = JSON.parse(readFileSync(stateFile(tab), "utf8"));
   } catch {}
+  if (state.slots.includes(orchestrator)) die("this pane is a herdr-orch worker; only the orchestrator pane runs orch");
   const live = new Set(layout.panes.map((p) => p.pane_id));
   const slots = state.slots.filter((p) => live.has(p));
   if (slots.length !== state.slots.length) {
@@ -237,14 +248,17 @@ function spawnWorker(positionals, values, extra) {
   const start = ["agent", "start", name, "--kind", kind, "--pane", pane];
   if (agentArgs.length) start.push("--", ...agentArgs);
   const proc = herdr(start, { check: false });
+  const event = { event: "spawn", name, kind, pane, cwd };
   if (proc.status !== 0) {
     const error = errorText(proc);
+    journal(t.tab, { ...event, error });
     if (!error.startsWith("agent_not_ready")) die(`${error} (pane ${pane} is left as a free slot)`);
     // Blocked at startup, for example by a folder trust prompt; show it to the caller.
     const screen = herdr(["agent", "read", name, "--source", "visible"], { check: false }).stdout;
     console.error(screen.split(/\r?\n/).filter((l) => l.trim()).slice(-15).join("\n"));
     die(`${error}; answer with herdr agent send-keys ${name} <keys>, or ask the user`);
   }
+  journal(t.tab, event);
   console.log(`${name} ${kind} ${pane}`);
 }
 
@@ -262,12 +276,19 @@ function sendPrompt(positionals) {
     "agent", "prompt", name, text + contract(report),
     "--wait", "--until", "working", "--until", "blocked", "--timeout", "30000",
   ], { check: false });
+  const firstLine = text.split(/\r?\n/).find((l) => l.trim())?.trim() || "";
+  const event = { event: "send", name, prompt: firstLine.length > 100 ? `${firstLine.slice(0, 99)}…` : firstLine, report };
   if (proc.status !== 0) {
     const error = errorText(proc);
-    if (error.startsWith("agent_blocked") || error.startsWith("agent_not_found")) die(error);
+    if (error.startsWith("agent_blocked") || error.startsWith("agent_not_found")) {
+      journal(t.tab, { ...event, error, failed: true });
+      die(error);
+    }
     // A timeout or stall does not prove the prompt was lost; keep the report path for wait.
+    event.error = error;
     console.error(`orch: ${error}; inspect ${name} before sending again`);
   }
+  journal(t.tab, event);
   t.state.reports[name] = report;
   saveState(t.tab, t.state);
   console.log(`${name}: sent (report: ${report})`);
@@ -334,8 +355,15 @@ async function waitWorkers(names, values) {
   const waits = targets.map((n) => waitOne(n, t.state.reports[n], timeout, children));
   let ok = true;
   const report = (r) => {
+    const written = Boolean(r.report && existsSync(r.report));
+    journal(t.tab, { event: "result", name: r.name, status: r.status, report: r.report, written });
+    if (r.status === "blocked") {
+      // The user has to answer the dialog, so make sure they see it.
+      herdr(["notification", "show", `${r.name} needs input`, "--body",
+        "A herdr-orch worker is waiting at an approval or question.", "--sound", "request"], { check: false });
+    }
     console.log(`${summary(r, lines)}\n`);
-    if (!(r.report && existsSync(r.report))) ok = false;
+    if (!written) ok = false;
   };
   if (values.any) {
     report(await Promise.race(waits));
@@ -366,7 +394,9 @@ function stopWorkers(names, values) {
     const command = EXIT_COMMAND[agent.agent];
     if (command) herdr(["agent", "prompt", name, command], { check: false });
     if (!command || !waitUntil(gone, 10000)) herdr(["agent", "send-keys", name, "ctrl+c", "ctrl+c"], { check: false });
-    if (waitUntil(gone, 5000)) {
+    const stopped = waitUntil(gone, 5000);
+    journal(t.tab, { event: "stop", name, stopped });
+    if (stopped) {
       console.log(`${name}: stopped (${agent.pane_id} is free)`);
     } else {
       console.error(`${name}: still running in ${agent.pane_id}; close --force closes the pane`);
@@ -389,8 +419,78 @@ function closeSlots(values) {
       console.log(`${pane}: busy, kept`);
     }
   }
+  journal(t.tab, { event: "close", closed: t.state.slots.length - kept.length, kept: kept.length });
   t.state.slots = kept;
   saveState(t.tab, t.state);
+}
+
+const clock = (iso) => new Date(iso).toTimeString().slice(0, 8);
+
+function eventLine(e) {
+  const at = clock(e.t);
+  switch (e.event) {
+    case "spawn": return `${at} spawn ${e.name} ${e.kind} in ${e.cwd}${e.error ? ` failed: ${e.error}` : ""}`;
+    case "send": return `${at} send ${e.name}: ${e.prompt}${e.error ? ` (${e.error})` : ""}`;
+    case "result": return `${at} result ${e.name}: ${e.status}${e.written ? "" : ", no report"}`;
+    case "stop": return `${at} stop ${e.name}${e.stopped ? "" : " failed"}`;
+    case "close": return `${at} close: ${e.closed} closed, ${e.kept} kept`;
+    default: return `${at} ${e.event}`;
+  }
+}
+
+// Print the tab's latest run and, for each worker's last prompt, what is still open.
+function showLog(values) {
+  const t = openTab();
+  const file = journalFile(t.tab);
+  let events = [];
+  try {
+    events = readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  } catch {}
+  if (!events.length) die("no journal for this tab yet");
+  // A close that leaves no slots ends a run.
+  let start = 0;
+  events.forEach((e, i) => {
+    if (e.event === "close" && e.kept === 0 && i < events.length - 1) start = i + 1;
+  });
+  const run = events.slice(start);
+  const limit = Number(values.lines || 40);
+  const d = new Date(run[0].t);
+  console.log(`journal: ${file}`);
+  console.log(`run since ${d.toDateString()} ${clock(run[0].t)}. Past actions only: check git and the reports before acting on them.`);
+  if (run.length > limit) console.log(`(${run.length - limit} earlier events omitted)`);
+  for (const e of run.slice(-limit)) console.log(eventLine(e));
+
+  const last = new Map();
+  for (const e of run) {
+    if (e.event === "send" && !e.failed) last.set(e.name, { report: e.report, collected: false });
+    if (e.event === "result" && e.written && last.has(e.name)) last.get(e.name).collected = true;
+  }
+  const open = [...last].filter(([, s]) => !s.collected).map(([name, { report }]) => {
+    if (existsSync(report)) return `${name}: finished, report not read yet: ${report}`;
+    const agent = herdr(["agent", "get", name], { check: false });
+    if (agent.status !== 0) return `${name}: exited without a report`;
+    const status = JSON.parse(agent.stdout).result.agent.agent_status;
+    if (status === "working") return `${name}: still working; run wait ${name}`;
+    if (status === "blocked") return `${name}: blocked at an approval or question; ask the user`;
+    return `${name}: ${status} without a report; read its screen`;
+  });
+  if (open.length) console.log(`\nopen:\n${open.join("\n")}`);
+}
+
+// Lessons kept across runs: one file per project, keyed by its git remote or
+// checkout path, and one for all projects. The orchestrator edits them.
+function showLessons() {
+  const git = (args) => spawnSync("git", args, { encoding: "utf8" }).stdout?.trim();
+  const project = git(["remote", "get-url", "origin"]) || git(["rev-parse", "--show-toplevel"]);
+  const dir = join(STATE_DIR, "lessons");
+  mkdirSync(dir, { recursive: true });
+  const files = [["all projects", join(dir, "global.md")]];
+  if (project) files.unshift([project, join(dir, `${createHash("sha1").update(project).digest("hex").slice(0, 12)}.md`)]);
+  for (const [scope, file] of files) {
+    if (!existsSync(file)) writeFileSync(file, `# herdr-orch lessons: ${scope}\n`);
+    const body = readFileSync(file, "utf8").split(/\r?\n/).slice(1).join("\n").trim();
+    console.log(`lessons for ${scope}: ${file}\n${body || "(none yet)"}\n`);
+  }
 }
 
 function listSlots() {
@@ -446,6 +546,8 @@ function main() {
       sendPrompt(positionals);
       return waitWorkers([positionals[0]], values);
     case "ls": return listSlots();
+    case "log": return showLog(values);
+    case "lessons": return showLessons();
     case "stop": return stopWorkers(positionals, values);
     case "close": return closeSlots(values);
     default: die(`unknown command ${command}\n${USAGE}`);
