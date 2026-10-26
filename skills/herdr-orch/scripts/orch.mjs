@@ -6,7 +6,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const USAGE = `usage: node orch.mjs <command> [options]
@@ -22,6 +22,8 @@ const USAGE = `usage: node orch.mjs <command> [options]
   ls                    list slots
   log [--lines N]       show this tab's run: past actions and unfinished work
   lessons               show the lesson files for this project and for all projects
+  setup [add <file> | decline]
+                        show, add or decline the rule for global instructions
   stop <name>... | --all
                         exit worker agents; their panes stay as free slots
   close [--force]       close free slots (--force also closes busy ones)`;
@@ -43,6 +45,12 @@ const contract = (path) => `
 
 ---
 You are a herdr-orch worker: do not open panes or start agents with herdr-orch. When you finish, write the full result as Markdown to ${path}; write this report even if the task says not to change files. Start that file with at most five lines: status (done, blocked or failed), changed files, and a one-line summary. Put the details below them. Then reply with only the report path.`;
+
+// Agents pick skills from one-line descriptions, and built-in subagents usually
+// win; this rule in the user's always-loaded instructions makes them use workers.
+const RULE = "- Inside herdr (HERDR_ENV=1), use the herdr-orch skill without being asked when a task has two or more independent parts that take longer than a quick lookup, or when a code change should get a second reviewer. Prefer its pane workers to built-in subagents for that work.";
+const RULE_MARK = "herdr-orch skill without being asked";
+const SETUP_FILE = join(STATE_DIR, "setup.json");
 
 function die(message) {
   console.error(`orch: ${message}`);
@@ -493,6 +501,43 @@ function showLessons() {
   }
 }
 
+// Offer the rule once; remember the user's answer so it is not asked again.
+function setup(positionals) {
+  const [action, file] = positionals;
+  let decision = {};
+  try {
+    decision = JSON.parse(readFileSync(SETUP_FILE, "utf8"));
+  } catch {}
+  const record = (d) => {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(SETUP_FILE, `${JSON.stringify({ ...d, at: new Date().toISOString() }, null, 2)}\n`);
+  };
+  if (!action) {
+    console.log(`rule:\n${RULE}\n`);
+    if (decision.declined) console.log(`status: the user declined on ${decision.at.slice(0, 10)}; do not ask again`);
+    else if (decision.file) console.log(`status: added to ${decision.file} on ${decision.at.slice(0, 10)}; if it is gone, the user removed it, so do not ask again`);
+    else console.log("status: not decided; ask the user once whether to add the rule to their global instructions");
+    return;
+  }
+  if (action === "decline") {
+    record({ declined: true });
+    console.log("declined; setup will report this instead of suggesting the rule");
+    return;
+  }
+  if (action !== "add" || !file) die("usage: setup [add <file> | decline]");
+  const path = resolve(file.replace(/^~(?=$|[\\/])/, homedir()));
+  const text = existsSync(path) ? readFileSync(path, "utf8") : "";
+  if (text.includes(RULE_MARK)) {
+    console.log(`${path} already has the rule`);
+  } else {
+    mkdirSync(dirname(path), { recursive: true });
+    const gap = !text || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
+    appendFileSync(path, `${gap}## herdr-orch\n\n${RULE}\n`);
+    console.log(`added the rule to ${path}`);
+  }
+  record({ file: path });
+}
+
 function listSlots() {
   const t = openTab();
   const agents = agentsByPane();
@@ -548,6 +593,7 @@ function main() {
     case "ls": return listSlots();
     case "log": return showLog(values);
     case "lessons": return showLessons();
+    case "setup": return setup(positionals);
     case "stop": return stopWorkers(positionals, values);
     case "close": return closeSlots(values);
     default: die(`unknown command ${command}\n${USAGE}`);

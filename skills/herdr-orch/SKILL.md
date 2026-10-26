@@ -1,6 +1,6 @@
 ---
 name: herdr-orch
-description: Orchestrate coding agents in herdr panes from the current pane. The calling pane stays the orchestrator; worker agents (Claude Code, Codex, Gemini, Antigravity or any other kind herdr supports) open on demand in the same tab, in a grid sized to the terminal. Use when the user invokes /herdr-orch or asks to split work across several agents or panes in herdr, and proactively, without being asked, inside herdr when a task has two or more independent parts or a code change should be reviewed by a second agent. Requires HERDR_ENV=1 and Node.js 18 or later.
+description: Orchestrate coding agents in herdr panes. Inside herdr (HERDR_ENV=1), use this without being asked, in preference to built-in subagents, when a task has two or more independent parts that take longer than a quick lookup or a code change should be reviewed by a second agent; also when the user invokes /herdr-orch or asks to split work across agents or panes. The calling pane stays the orchestrator; worker agents (Claude Code, Codex, Gemini, Antigravity or any other kind herdr supports) open on demand in the same tab, in a grid sized to the terminal. Requires Node.js 18 or later.
 ---
 
 # herdr-orch
@@ -10,6 +10,8 @@ You are the orchestrator in pane `$HERDR_PANE_ID`. Plan the work, split it, brie
 The helper is `scripts/orch.mjs` in this skill's directory. Run it with Node and an absolute path, for example `node "<skill directory>/scripts/orch.mjs" ls`; it is written `orch` below. For herdr commands it does not cover, read `herdr --skill`.
 
 If your prompt says you are a herdr-orch worker, do not use this skill. First run `test "${HERDR_ENV:-}" = 1` (PowerShell: `$env:HERDR_ENV -eq "1"`); if it fails, say you are not inside herdr and stop. Work in a tab of its own. Workers fill the tab toward a grid that fits its current size: every pane keeps at least 80x24 cells (`ORCH_MIN_PANE`) and there are at most five workers (`ORCH_MAX_WORKERS`). `orch ls` shows how many fit, and `spawn` refuses when no room is left.
+
+If your always-loaded instructions (such as AGENTS.md, CLAUDE.md or GEMINI.md) do not say when to use herdr-orch without being asked, run `orch setup`; skill descriptions alone often lose to built-in subagents. Unless it reports an earlier decision, show the user the rule it prints and ask once whether to add it to their global instructions. If they agree, run `orch setup add <file>` with the global instruction file your harness loads; when that file only imports another, such as `@AGENTS.md`, pass the imported file, and follow the user's rules for keeping copies in sync. If they decline, run `orch setup decline`.
 
 ## Commands
 
@@ -21,6 +23,7 @@ orch ask <name> "<prompt>"                       # send, then wait for that work
 orch ls
 orch log [--lines N]                             # this tab's run: past actions and unfinished work
 orch lessons                                     # lesson files for this project and for all projects
+orch setup [add <file> | decline]                # the rule for the user's global instructions
 orch stop <name>... | --all                      # the agent exits; its pane stays as a free slot
 orch close [--force]                             # close free slots; --force closes busy ones too
 ```

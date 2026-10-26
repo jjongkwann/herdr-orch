@@ -28,6 +28,8 @@ npx skills add jjongkwann/herdr-orch
 
 Add `-g` to install it for your user instead of the current project, and `-a <agent>` to choose the agents.
 
+Agents choose skills from a one-line description, and their built-in subagents usually win. So the first time the skill runs, the agent offers to add one rule to your global instructions (`AGENTS.md`, `CLAUDE.md` or `GEMINI.md`) that tells it to use herdr-orch inside herdr without being asked. Nothing is written unless you agree, and a no is remembered. To add the rule yourself, run `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md` with the file your agent loads.
+
 ## Use
 
 1. Open a new herdr tab and start your agent in it.
@@ -45,6 +47,7 @@ node scripts/orch.mjs ask <name> "<prompt>"
 node scripts/orch.mjs ls
 node scripts/orch.mjs log [--lines N]
 node scripts/orch.mjs lessons
+node scripts/orch.mjs setup [add <file> | decline]
 node scripts/orch.mjs stop <name>... | --all
 node scripts/orch.mjs close [--force]
 ```
