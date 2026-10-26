@@ -10,7 +10,7 @@ An agent skill that turns one [herdr](https://herdr.dev) tab into a small team o
 └──────────────┴──────────────┴──────────────┘
 ```
 
-The grid follows the tab size. Every pane keeps at least 80x24 cells, so a laptop screen may fit a 2x2 grid and a wide monitor a 2x3 grid; the layout is recomputed each time a worker opens, including after the terminal is resized.
+The grid follows the tab size. Every pane keeps at least 80x24 cells, so a laptop screen may fit a 2x2 grid and a wide monitor a 2x3 grid; the layout is recomputed each time a worker opens, including after the terminal is resized. While no terminal shows the herdr server (detached, or the herdr client shows another machine), herdr reports a smaller fallback size for every tab; orch then plans from the size its workers were made for, so the grid comes out right when the terminal shows the tab again.
 
 Workers can be any agent kind herdr recognizes: Claude Code, Codex, Gemini CLI, Antigravity CLI, OpenCode and others. You can mix kinds in one tab.
 

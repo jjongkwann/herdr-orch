@@ -113,17 +113,38 @@ function journal(tab, event) {
   appendFileSync(journalFile(tab), `${JSON.stringify({ t: new Date().toISOString(), ...event })}\n`);
 }
 
+// herdr reports one size for every tab: that of the terminal showing this server, or
+// a fixed fallback (120x40 by default) while none does, such as while the herdr client
+// shows another machine. Panes keep their ratios, and every worker was at least
+// MIN_WIDTH x MIN_HEIGHT when it opened, so smaller workers mean herdr reports less
+// than the layout was made for: plan on the smallest size at which they fit again.
+function readLayout(orchestrator, slots) {
+  const layout = result(["pane", "layout", "--pane", orchestrator]).layout;
+  const workers = layout.panes.filter((p) => slots.includes(p.pane_id));
+  const sx = Math.max(1, ...workers.map((p) => MIN_WIDTH / p.rect.width));
+  const sy = Math.max(1, ...workers.map((p) => MIN_HEIGHT / p.rect.height));
+  const scale = (r) => ({ x: r.x * sx, y: r.y * sy, width: r.width * sx, height: r.height * sy });
+  return {
+    ...layout,
+    reported: layout.area,
+    area: scale(layout.area),
+    panes: layout.panes.map((p) => ({ ...p, rect: scale(p.rect) })),
+  };
+}
+
+const sizeText = ({ width, height }) => `${Math.round(width)}x${Math.round(height)}`;
+
 // Read the caller's tab, its layout and this script's live slots in it.
 function openTab() {
   if (process.env.HERDR_ENV !== "1") die("not running inside a herdr pane");
   const orchestrator = process.env.HERDR_PANE_ID;
   const tab = process.env.HERDR_TAB_ID;
-  const layout = result(["pane", "layout", "--pane", orchestrator]).layout;
   let state = { slots: [], reports: {} };
   try {
     state = JSON.parse(readFileSync(stateFile(tab), "utf8"));
   } catch {}
   if (state.slots.includes(orchestrator)) die("this pane is a herdr-orch worker; only the orchestrator pane runs orch");
+  const layout = readLayout(orchestrator, state.slots);
   const live = new Set(layout.panes.map((p) => p.pane_id));
   const slots = state.slots.filter((p) => live.has(p));
   if (slots.length !== state.slots.length) {
@@ -223,13 +244,14 @@ function spawnWorker(positionals, values, extra) {
       herdr(["pane", "close", other]);
       t.state.slots = t.state.slots.filter((p) => p !== other);
       saveState(t.tab, t.state);
-      t.layout = result(["pane", "layout", "--pane", t.orchestrator]).layout;
+      t.layout = readLayout(t.orchestrator, t.state.slots);
     }
     const grid = fitGrid(t.layout.area);
-    const { width, height } = t.layout.area;
+    const { width } = t.layout.area;
+    const size = sizeText(t.layout.area);
     const fits = grid.panes - 1;
-    if (!fits) die(`this ${width}x${height} tab is too small for a worker; panes need ${MIN_WIDTH}x${MIN_HEIGHT} (ORCH_MIN_PANE)`);
-    if (t.state.slots.length >= fits) die(`no room for another worker: this ${width}x${height} tab fits ${fits}; stop one first`);
+    if (!fits) die(`this ${size} tab is too small for a worker; panes need ${MIN_WIDTH}x${MIN_HEIGHT} (ORCH_MIN_PANE). If the terminal is larger, no terminal shows this herdr server right now (detached, or the herdr client shows another machine) and herdr reports a fallback size; spawn again once it shows this tab`);
+    if (t.state.slots.length >= fits) die(`no room for another worker: this ${size} tab fits ${fits}; stop one first`);
     let split = nextSplit(t.orchestrator, t.state.slots, t.layout, grid);
     const orchestratorWidth = t.layout.panes.find((p) => p.pane_id === t.orchestrator).rect.width;
     if (!split && orchestratorWidth - width / grid.cols >= 1) {
@@ -237,7 +259,7 @@ function spawnWorker(positionals, values, extra) {
       // orchestrator's extra width to the workers and try again.
       const amount = (orchestratorWidth - width / grid.cols) / width;
       herdr(["pane", "resize", "--pane", t.orchestrator, "--direction", "left", "--amount", amount.toFixed(4)], { check: false });
-      t.layout = result(["pane", "layout", "--pane", t.orchestrator]).layout;
+      t.layout = readLayout(t.orchestrator, t.state.slots);
       split = nextSplit(t.orchestrator, t.state.slots, t.layout, grid);
     }
     if (!split) die("no pane is large enough to split; stop workers and run close so new panes follow the tab size");
@@ -542,8 +564,10 @@ function listSlots() {
   const t = openTab();
   const agents = agentsByPane();
   const grid = fitGrid(t.layout.area);
-  const { width, height } = t.layout.area;
-  console.log(`${t.state.slots.length}/${grid.panes - 1} slots (${grid.rows} rows x ${grid.cols} columns for a ${width}x${height} tab)`);
+  const size = sizeText(t.layout.area);
+  const reported = sizeText(t.layout.reported);
+  const note = size === reported ? "" : `; herdr reports ${reported}, less than the workers were made for`;
+  console.log(`${t.state.slots.length}/${grid.panes - 1} slots (${grid.rows} rows x ${grid.cols} columns for a ${size} tab${note})`);
   for (const pane of t.state.slots) {
     const a = agents.get(pane);
     if (a) console.log(`${pane}  ${a.name || "-"}  ${a.agent}  ${a.agent_status}`);
