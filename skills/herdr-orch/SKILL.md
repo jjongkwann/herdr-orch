@@ -16,11 +16,12 @@ If your always-loaded instructions (such as AGENTS.md, CLAUDE.md or GEMINI.md) d
 ## Commands
 
 ```
-orch spawn <name> <kind> [--cwd DIR] [--mcp] [-- agent args]
+orch spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [-- agent args]
 orch send <name> "<prompt>"                      # or - to read stdin; returns once the worker starts
 orch wait [<name>...] [--any] [--timeout SEC]    # block until workers finish; print report summaries
 orch ask <name> "<prompt>"                       # send, then wait for that worker
 orch ls
+orch worktrees [--clean] [--base REF]            # worktrees orch made; --clean removes merged ones
 orch log [--lines N]                             # this tab's run: past actions and unfinished work
 orch lessons                                     # lesson files for this project and for all projects
 orch setup [add <file> | decline]                # the rule for the user's global instructions
@@ -29,6 +30,7 @@ orch close [--force]                             # close free slots; --force clo
 ```
 
 - `spawn` reuses a free slot in the same directory before opening a new pane. Run spawns one at a time.
+- `--worktree` creates `../<repo>-<name>` on a new branch `<name>` from `--base` (default: the current branch of `--cwd`) and starts the worker there; spawning the same name with `--worktree` again reuses it. `orch worktrees` shows each worktree orch made: in use by a worker, uncommitted changes, commits not yet in its base, or merged. With `--clean` it removes the merged ones that no worker uses and deletes their branches. It never touches worktrees orch did not create. Pass `--base` to compare with another branch, such as the one you merged into.
 - `kind` is a herdr agent kind; `herdr agent` lists them. Claude Code workers start without MCP servers (`--strict-mcp-config`) to keep startup context and memory small; add `--mcp` when the task needs those tools. Pass model or effort flags after `--`, for example `-- --model sonnet`.
 - `send` appends a report contract: the worker writes the full result to a report file whose first lines are status, changed files and a one-line summary, and replies with only the path. `wait` prints the path and those lines.
 - `wait` without names waits for every worker that has an unfinished report. When a worker is blocked, `wait` also shows a herdr notification so the user sees it.
@@ -71,10 +73,10 @@ Before the final `close`, read `orch log` and update the files with your file to
 
 ## Coordination
 
-- Never give two workers overlapping files. For parallel writers, run `git worktree add <path> -b <branch>`, spawn with `--cwd <path>`, and merge the branches yourself.
+- Never give two workers overlapping files. For parallel writers, spawn each with `--worktree` and merge the branches yourself.
 - If `spawn` says the worker is blocked at startup, read the screen it prints. A folder trust prompt for a git worktree you created from the repository the user is working in may be accepted with `herdr agent send-keys <name> <keys>`; ask the user about any other prompt.
 - If `wait` reports `blocked` or no report, read the screen with `herdr agent read <name> --source recent-unwrapped --lines 40`. Do not answer approval dialogs yourself; ask the user.
 - Some agents, such as Antigravity, can look idle while background work continues, so trust the report file rather than the state.
 - A timeout or error does not prove the prompt was lost. Inspect the worker before sending it again.
 - Never stop or close panes that `orch` did not create.
-- When the work is done, run `orch stop --all` and then `orch close`.
+- When the work is done, run `orch stop --all`, then `orch worktrees --clean` once the branches are merged, then `orch close`. Report the worktrees it kept and why.

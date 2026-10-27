@@ -40,17 +40,20 @@ Inside herdr, the agent also uses the skill without being asked when a task has 
 The orchestrator calls `scripts/orch.mjs`, which you can also run yourself from a herdr pane:
 
 ```
-node scripts/orch.mjs spawn <name> <kind> [--cwd DIR] [--mcp] [-- agent args]
+node scripts/orch.mjs spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [-- agent args]
 node scripts/orch.mjs send <name> "<prompt>"
 node scripts/orch.mjs wait [<name>...] [--any] [--timeout SEC]
 node scripts/orch.mjs ask <name> "<prompt>"
 node scripts/orch.mjs ls
+node scripts/orch.mjs worktrees [--clean] [--base REF]
 node scripts/orch.mjs log [--lines N]
 node scripts/orch.mjs lessons
 node scripts/orch.mjs setup [add <file> | decline]
 node scripts/orch.mjs stop <name>... | --all
 node scripts/orch.mjs close [--force]
 ```
+
+Workers that edit files in parallel each get their own git worktree: `spawn --worktree` creates `../<repo>-<name>` on a new branch `<name>` and starts the worker there. After the orchestrator merges the branches, `worktrees --clean` removes the worktrees that are fully merged and no longer in use, and deletes their branches. It keeps anything with uncommitted changes or unmerged commits, and it ignores worktrees that `orch` did not create.
 
 `orch` writes each spawn, prompt, result, stop and close to a journal for the tab. `log` prints the current run from it, along with the workers whose last prompt is still open: report not yet read, still working, or exited without a report. The orchestrator runs it after its context is compacted or restarted. When `wait` sees a worker blocked at an approval or question, it shows a herdr notification.
 

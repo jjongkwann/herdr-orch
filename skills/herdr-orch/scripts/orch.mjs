@@ -6,12 +6,12 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 
 const USAGE = `usage: node orch.mjs <command> [options]
 
-  spawn <name> <kind> [--cwd DIR] [--mcp] [-- agent args]
+  spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [-- agent args]
                         start a worker in a free slot or a new pane
   send <name> <prompt|->
                         submit a prompt; returns once the worker starts
@@ -20,6 +20,8 @@ const USAGE = `usage: node orch.mjs <command> [options]
   ask <name> <prompt|-> [--timeout SEC] [--lines N]
                         send, then wait for that worker
   ls                    list slots
+  worktrees [--clean] [--base REF]
+                        show the worktrees orch made; --clean removes merged ones
   log [--lines N]       show this tab's run: past actions and unfinished work
   lessons               show the lesson files for this project and for all projects
   setup [add <file> | decline]
@@ -51,6 +53,8 @@ You are a herdr-orch worker: do not open panes or start agents with herdr-orch. 
 const RULE = "- Inside herdr (HERDR_ENV=1), use the herdr-orch skill without being asked when a task has two or more independent parts that take longer than a quick lookup, or when a code change should get a second reviewer. Prefer its pane workers to built-in subagents for that work.";
 const RULE_MARK = "herdr-orch skill without being asked";
 const SETUP_FILE = join(STATE_DIR, "setup.json");
+// Worktrees that `spawn --worktree` created, so `worktrees --clean` never touches others.
+const WORKTREES_FILE = join(STATE_DIR, "worktrees.json");
 
 function die(message) {
   console.error(`orch: ${message}`);
@@ -74,6 +78,15 @@ function herdr(args, { check = true } = {}) {
 }
 
 const result = (args) => JSON.parse(herdr(args).stdout).result;
+
+function git(args, cwd, { check = true } = {}) {
+  const proc = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (proc.error) die(`cannot run git: ${proc.error.message}`);
+  if (check && proc.status !== 0) die(`git ${args[0]}: ${String(proc.stderr || proc.stdout).trim()}`);
+  return proc;
+}
+
+const gitOut = (args, cwd) => git(args, cwd).stdout.trim();
 const agentExists = (name) => herdr(["agent", "get", name], { check: false }).status === 0;
 
 function sleep(ms) {
@@ -226,13 +239,100 @@ function nextSplit(orchestrator, slots, layout, grid) {
   return null;
 }
 
+function loadWorktrees() {
+  try {
+    return JSON.parse(readFileSync(WORKTREES_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveWorktrees(trees) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(WORKTREES_FILE, `${JSON.stringify(trees, null, 2)}\n`);
+}
+
+// The main checkout of the repository that contains dir.
+const repoRoot = (dir) => dirname(gitOut(["rev-parse", "--path-format=absolute", "--git-common-dir"], dir));
+
+// Create ../<repo>-<name> on a new branch <name>, or reuse the one orch made earlier.
+function addWorktree(name, dir, base) {
+  const root = repoRoot(dir);
+  const path = join(dirname(root), `${basename(root)}-${name}`);
+  const trees = loadWorktrees();
+  if (trees[path]) {
+    if (!existsSync(path)) die(`${path} was removed outside orch; run worktrees to drop it`);
+    return { path, created: false };
+  }
+  if (existsSync(path)) die(`${path} already exists and orch did not create it`);
+  if (git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`], root, { check: false }).status === 0) {
+    die(`branch ${name} already exists; choose another worker name`);
+  }
+  let from = base || gitOut(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  if (from === "HEAD") from = gitOut(["rev-parse", "HEAD"], dir);
+  git(["worktree", "add", "-q", "-b", name, path, from], root);
+  trees[path] = { repo: root, branch: name, base: from };
+  saveWorktrees(trees);
+  return { path, created: true };
+}
+
+// Report the worktrees orch made in this repository; with clean, remove the
+// merged ones that no agent uses, and delete their branches.
+function worktrees(values) {
+  const t = openTab();
+  const root = repoRoot(process.cwd());
+  const trees = loadWorktrees();
+  const live = new Set(gitOut(["worktree", "list", "--porcelain"], root).split("\n")
+    .filter((l) => l.startsWith("worktree ")).map((l) => l.slice(9)));
+  const agents = result(["agent", "list"]).agents;
+  const lines = [];
+  for (const [path, w] of Object.entries(trees)) {
+    if (w.repo !== root) continue;
+    if (!live.has(path)) {
+      delete trees[path];
+      lines.push(`${path}: no longer a worktree; dropped from the list`);
+      continue;
+    }
+    const target = values.base || w.base;
+    const user = agents.find((a) => a.cwd === path || a.cwd?.startsWith(path + sep));
+    const count = git(["rev-list", "--count", `${target}..${w.branch}`], root, { check: false });
+    let state;
+    if (user) state = `in use by ${user.name || user.pane_id}`;
+    else if (gitOut(["status", "--porcelain"], path)) state = "uncommitted changes";
+    else if (count.status !== 0) state = `cannot compare with ${target}`;
+    else if (Number(count.stdout) > 0) state = `${Number(count.stdout)} commit${Number(count.stdout) === 1 ? "" : "s"} not in ${target}`;
+    else if (!values.clean) state = `merged into ${target}; --clean removes it`;
+    else {
+      const removed = git(["worktree", "remove", path], root, { check: false });
+      if (removed.status !== 0) {
+        state = `merged, but remove failed: ${String(removed.stderr).trim()}`;
+      } else {
+        // Every commit of the branch is in target, so deleting it loses nothing.
+        git(["branch", "-D", w.branch], root, { check: false });
+        delete trees[path];
+        journal(t.tab, { event: "worktree", action: "remove", path, branch: w.branch });
+        state = `merged into ${target}; removed with its branch`;
+      }
+    }
+    lines.push(`${path} (${w.branch}): ${state}`);
+  }
+  saveWorktrees(trees);
+  console.log(lines.length ? lines.join("\n") : "no worktrees made by orch in this repository");
+}
+
 function spawnWorker(positionals, values, extra) {
   const [name, kind] = positionals;
   if (!name || !kind) die("usage: spawn <name> <kind> [--cwd DIR] [--mcp] [-- agent args]");
   if (!NAME_RE.test(name)) die("name must match [a-z][a-z0-9_-]{0,31}");
   if (agentExists(name)) die(`agent ${name} already exists`);
-  const cwd = resolve(values.cwd || process.cwd());
+  if (values.base && !values.worktree) die("--base needs --worktree");
+  let cwd = resolve(values.cwd || process.cwd());
   const t = openTab();
+  if (values.worktree) {
+    const tree = addWorktree(name, cwd, values.base);
+    cwd = tree.path;
+    if (tree.created) journal(t.tab, { event: "worktree", action: "add", path: tree.path, branch: name });
+  }
   const agents = agentsByPane();
   const paneCwd = (pane) => result(["pane", "get", pane]).pane.cwd;
 
@@ -464,6 +564,7 @@ function eventLine(e) {
     case "result": return `${at} result ${e.name}: ${e.status}${e.written ? "" : ", no report"}`;
     case "stop": return `${at} stop ${e.name}${e.stopped ? "" : " failed"}`;
     case "close": return `${at} close: ${e.closed} closed, ${e.kept} kept`;
+    case "worktree": return `${at} worktree ${e.action} ${e.path} (${e.branch})`;
     default: return `${at} ${e.event}`;
   }
 }
@@ -595,6 +696,9 @@ function main() {
       options: {
         cwd: { type: "string" },
         mcp: { type: "boolean" },
+        worktree: { type: "boolean" },
+        base: { type: "string" },
+        clean: { type: "boolean" },
         timeout: { type: "string" },
         lines: { type: "string" },
         any: { type: "boolean" },
@@ -615,6 +719,7 @@ function main() {
       sendPrompt(positionals);
       return waitWorkers([positionals[0]], values);
     case "ls": return listSlots();
+    case "worktrees": return worktrees(values);
     case "log": return showLog(values);
     case "lessons": return showLessons();
     case "setup": return setup(positionals);
