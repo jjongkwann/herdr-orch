@@ -65,7 +65,7 @@ Workers that edit files in parallel each get their own git worktree: `spawn --wo
 - Each worker writes its full result to a report file. The orchestrator reads only the first few lines and passes paths, not content, between workers.
 - Pane layout, IDs and JSON stay inside the script instead of in the orchestrator's context.
 - Claude Code workers start without MCP servers unless you pass `--mcp`, which keeps their startup context and memory small.
-- Workers are reused for follow-up work in the same area and stopped when their area is done.
+- Workers are reused for follow-up work in the same area and stopped when their area is done. `ls` and `wait` show how many tokens of context each Claude Code worker carries, read from its session transcript, so the orchestrator can replace one whose context has grown large.
 
 ## Configuration
 

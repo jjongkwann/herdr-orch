@@ -4,7 +4,9 @@
 // tab one pane at a time, toward a grid that fits the current tab size.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
@@ -171,6 +173,48 @@ function agentsByPane() {
   return new Map(result(["agent", "list"]).agents.map((a) => [a.pane_id, a]));
 }
 
+// Claude Code records each reply's token usage in the session transcript; the
+// input side of the last reply is the context that reply was given. Other kinds
+// keep no such record that herdr points to, so they return null, as does a
+// transcript whose last reply is not in its final megabyte. The count is only for
+// display, so any read error also gives null.
+function contextTokens(agent) {
+  const id = agent.agent_session?.value;
+  if (agent.agent !== "claude" || !id) return null;
+  // Workers get the herdr server's environment, which may not match ours.
+  const roots = [...new Set([process.env.CLAUDE_CONFIG_DIR, join(homedir(), ".claude")].filter(Boolean))];
+  try {
+    const file = roots
+      .flatMap((r) => (existsSync(join(r, "projects")) ? readdirSync(join(r, "projects")).map((d) => join(r, "projects", d)) : []))
+      .map((d) => join(d, `${id}.jsonl`))
+      .find((f) => existsSync(f));
+    if (!file) return null;
+    // Transcripts grow to many megabytes; the last reply is near the end.
+    const fd = openSync(file, "r");
+    const size = fstatSync(fd).size;
+    const tail = Buffer.alloc(Math.min(size, 1 << 20));
+    readSync(fd, tail, 0, tail.length, size - tail.length);
+    closeSync(fd);
+    for (const line of tail.toString("utf8").split("\n").reverse()) {
+      if (!line.includes('"usage"')) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const u = entry.message?.usage;
+      // Usage limits and API errors leave "<synthetic>" replies with zero usage.
+      if (u && !entry.isSidechain && entry.message.model !== "<synthetic>") {
+        return u.input_tokens + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+      }
+    }
+  } catch {}
+  return null;
+}
+
+const contextText = (tokens) => `${Math.round(tokens / 1000)}k tokens of context`;
+
 function isFree(pane, agents) {
   if (agents.has(pane)) return false;
   const info = result(["pane", "process-info", "--pane", pane]).process_info;
@@ -253,7 +297,8 @@ function saveWorktrees(trees) {
 }
 
 // The main checkout of the repository that contains dir.
-const repoRoot = (dir) => dirname(gitOut(["rev-parse", "--path-format=absolute", "--git-common-dir"], dir));
+// git prints C:/... on Windows; resolve() gives the C:\... form that join() and herdr use.
+const repoRoot = (dir) => resolve(dirname(gitOut(["rev-parse", "--path-format=absolute", "--git-common-dir"], dir)));
 
 // Create ../<repo>-<name> on a new branch <name>, or reuse the one orch made earlier.
 function addWorktree(name, dir, base) {
@@ -283,11 +328,11 @@ function worktrees(values) {
   const root = repoRoot(process.cwd());
   const trees = loadWorktrees();
   const live = new Set(gitOut(["worktree", "list", "--porcelain"], root).split("\n")
-    .filter((l) => l.startsWith("worktree ")).map((l) => l.slice(9)));
+    .filter((l) => l.startsWith("worktree ")).map((l) => resolve(l.slice(9))));
   const agents = result(["agent", "list"]).agents;
   const lines = [];
   for (const [path, w] of Object.entries(trees)) {
-    if (w.repo !== root) continue;
+    if (resolve(w.repo) !== root) continue;
     if (!live.has(path)) {
       delete trees[path];
       lines.push(`${path}: no longer a worktree; dropped from the list`);
@@ -446,17 +491,18 @@ function waitOne(name, report, timeout, children) {
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
     child.on("close", async (code) => {
-      let status = code === 0 ? JSON.parse(stdout).result.agent.agent_status : errorText({ stderr, stdout });
-      if (!agentExists(name)) status = "exited";
+      const status = code === 0 ? JSON.parse(stdout).result.agent.agent_status : errorText({ stderr, stdout });
+      const got = herdr(["agent", "get", name], { check: false });
+      if (got.status !== 0) return done({ name, status: "exited", report });
       // Some agents settle before the report lands; give the write a moment.
-      else if ((status === "idle" || status === "done") && report) await waitForFile(report, 60000);
-      done({ name, status, report });
+      if ((status === "idle" || status === "done") && report) await waitForFile(report, 60000);
+      done({ name, status, report, tokens: contextTokens(JSON.parse(got.stdout).result.agent) });
     });
   });
 }
 
-function summary({ name, status, report }, lines) {
-  const out = [`${name}: ${status}`];
+function summary({ name, status, report, tokens }, lines) {
+  const out = [tokens == null ? `${name}: ${status}` : `${name}: ${status}, ${contextText(tokens)}`];
   if (report && existsSync(report)) {
     out.push(`report: ${report}`);
     for (const line of readFileSync(report, "utf8").split(/\r?\n/).slice(0, 6)) {
@@ -466,9 +512,11 @@ function summary({ name, status, report }, lines) {
   } else if (status === "exited") {
     out.push("report: not written");
   } else {
+    // Approval dialogs are drawn over the screen and missing from the scrollback,
+    // so read what the pane shows now.
     out.push("report: not written; last screen lines:");
-    const screen = herdr(["agent", "read", name, "--source", "recent-unwrapped", "--lines", String(lines)], { check: false });
-    out.push(...screen.stdout.split(/\r?\n/).slice(-lines));
+    const screen = herdr(["agent", "read", name, "--source", "visible"], { check: false });
+    out.push(...screen.stdout.split(/\r?\n/).filter((l) => l.trim()).slice(-lines));
   }
   return out.join("\n");
 }
@@ -521,7 +569,17 @@ function stopWorkers(names, values) {
       continue;
     }
     const gone = () => !agentExists(name);
+    // Read the status now: with --all, earlier stops take time and a dialog may open meanwhile.
+    const blocked = () => {
+      const got = herdr(["agent", "get", name], { check: false });
+      return got.status === 0 && JSON.parse(got.stdout).result.agent.agent_status === "blocked";
+    };
     const command = EXIT_COMMAND[agent.agent];
+    if (blocked()) {
+      // An open approval dialog swallows the exit command and Ctrl+C; dismiss it first.
+      herdr(["agent", "send-keys", name, "esc"], { check: false });
+      waitUntil(() => !blocked(), 5000);
+    }
     if (command) herdr(["agent", "prompt", name, command], { check: false });
     if (!command || !waitUntil(gone, 10000)) herdr(["agent", "send-keys", name, "ctrl+c", "ctrl+c"], { check: false });
     const stopped = waitUntil(gone, 5000);
@@ -671,7 +729,10 @@ function listSlots() {
   console.log(`${t.state.slots.length}/${grid.panes - 1} slots (${grid.rows} rows x ${grid.cols} columns for a ${size} tab${note})`);
   for (const pane of t.state.slots) {
     const a = agents.get(pane);
-    if (a) console.log(`${pane}  ${a.name || "-"}  ${a.agent}  ${a.agent_status}`);
+    if (a) {
+      const tokens = contextTokens(a);
+      console.log(`${pane}  ${a.name || "-"}  ${a.agent}  ${a.agent_status}${tokens == null ? "" : `  ${contextText(tokens)}`}`);
+    }
     else console.log(`${pane}  ${isFree(pane, agents) ? "free" : "busy (no agent)"}`);
   }
 }

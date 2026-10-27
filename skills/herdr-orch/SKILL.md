@@ -25,7 +25,7 @@ orch worktrees [--clean] [--base REF]            # worktrees orch made; --clean 
 orch log [--lines N]                             # this tab's run: past actions and unfinished work
 orch lessons                                     # lesson files for this project and for all projects
 orch setup [add <file> | decline]                # the rule for the user's global instructions
-orch stop <name>... | --all                      # the agent exits; its pane stays as a free slot
+orch stop <name>... | --all                      # the agent exits (an open dialog is dismissed); its pane stays as a free slot
 orch close [--force]                             # close free slots; --force closes busy ones too
 ```
 
@@ -68,13 +68,13 @@ Before the final `close`, read `orch log` and update the files with your file to
 - Write self-contained prompts: goal, files or directories, constraints and done criteria. Point to paths instead of pasting content. Put shared project context in one brief file and reference it from each prompt.
 - Read a full report only when its summary is not enough. To hand one worker's result to another, pass the report path.
 - Check results in proportion to their risk: spot-check the claims that matter instead of redoing the worker's task.
-- Send follow-up work in the same area to the same worker, whose context is already loaded. Stop a worker when its area is done, when you move to unrelated work, or when its context has grown large, and spawn a fresh one if needed.
+- Send follow-up work in the same area to the same worker, whose context is already loaded. Stop a worker when its area is done, when you move to unrelated work, or when its context has grown large, and spawn a fresh one if needed. `wait` and `ls` show how many tokens of context each Claude Code worker carries.
 
 ## Coordination
 
 - Never give two workers overlapping files. For parallel writers, spawn each with `--worktree` and merge the branches yourself.
 - If `spawn` says the worker is blocked at startup, read the screen it prints. A folder trust prompt for a git worktree you created from the repository the user is working in may be accepted with `herdr agent send-keys <name> <keys>`; ask the user about any other prompt.
-- If `wait` reports `blocked` or no report, read the screen with `herdr agent read <name> --source recent-unwrapped --lines 40`. Do not answer approval dialogs yourself; ask the user.
+- If `wait` reports `blocked` or no report, it prints the last lines of the worker's screen; to see the whole screen, run `herdr agent read <name> --source visible`, and for earlier output, `--source recent-unwrapped`. Do not answer approval dialogs yourself; ask the user.
 - Some agents, such as Antigravity, can look idle while background work continues, so trust the report file rather than the state.
 - A timeout or error does not prove the prompt was lost. Inspect the worker before sending it again.
 - Never stop or close panes that `orch` did not create.
