@@ -38,7 +38,7 @@ orch close [--force]                             # close free slots; --force clo
 
 ## When to use a worker
 
-Use workers proactively: when one of these situations comes up, open the worker without waiting for the user to ask.
+Use workers proactively: when one of these situations comes up, open the worker without waiting for the user to ask. Split work by context, not by role: give a worker a piece that needs little from the rest of the task and returns a compact result. Plan the work yourself; the agent that writes the plan should be the one that changes it as results arrive.
 
 | Situation | Worker |
 |---|---|
@@ -46,7 +46,6 @@ Use workers proactively: when one of these situations comes up, open the worker 
 | Two or more parts of the task touch different files or modules | `implementer` for each part, each in its own git worktree |
 | The task needs research that the implementation does not have to wait for | `researcher` |
 | The same build or test failure remains after two fix attempts | `debugger`, given the failing command and what was tried |
-| A large or unclear task needs a plan before the work is split | `planner` |
 
 - Brief each worker with its role: start the prompt with `Read <skill directory>/references/roles/<role>.md and follow it.`, then give the task.
 - Keep short lookups that nobody needs to watch out of panes: do them yourself or with your harness's own subagents.

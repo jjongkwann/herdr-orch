@@ -35,7 +35,7 @@ Agents choose skills from a one-line description, and their built-in subagents u
 1. Open a new herdr tab and start your agent in it.
 2. Ask for the work, for example `/herdr-orch Add input validation to the signup API and have a second worker review the diff` in Claude Code, or "use the herdr-orch skill to ..." in other agents.
 
-Inside herdr, the agent also uses the skill without being asked when a task has independent parts or a code change should get a second reviewer. Workers are briefed with a role from `references/roles/`: reviewer, implementer, researcher, debugger or planner. Your own instructions about which agents to use and how sparingly take precedence.
+Inside herdr, the agent also uses the skill without being asked when a task has independent parts or a code change should get a second reviewer. Workers are briefed with a role from `references/roles/`: reviewer, implementer, researcher or debugger. Work is split by context rather than by role, and the orchestrator does its own planning. Your own instructions about which agents to use and how sparingly take precedence.
 
 The orchestrator calls `scripts/orch.mjs`, which you can also run yourself from a herdr pane:
 
