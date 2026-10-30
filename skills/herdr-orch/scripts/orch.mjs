@@ -151,6 +151,7 @@ const sizeText = ({ width, height }) => `${Math.round(width)}x${Math.round(heigh
 
 // Read the caller's tab, its layout and this script's live slots in it.
 function openTab() {
+  if (process.env.HC_TERMINAL_ID) die("herdr-core session: use hc directly; read references/herdr-core.md (orch.mjs supports the older herdr only)");
   if (process.env.HERDR_ENV !== "1") die("not running inside a herdr pane");
   const orchestrator = process.env.HERDR_PANE_ID;
   const tab = process.env.HERDR_TAB_ID;

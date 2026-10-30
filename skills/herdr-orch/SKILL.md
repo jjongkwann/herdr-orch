@@ -1,9 +1,19 @@
 ---
 name: herdr-orch
-description: Orchestrate coding agents in herdr panes. Inside herdr (HERDR_ENV=1), use this without being asked, in preference to built-in subagents, when a task has two or more independent parts that take longer than a quick lookup or a code change should be reviewed by a second agent; also when the user invokes /herdr-orch or asks to split work across agents or panes. The calling pane stays the orchestrator; worker agents (Claude Code, Codex, Gemini, Antigravity or any other kind herdr supports) open on demand in the same tab, in a grid sized to the terminal. Requires Node.js 18 or later.
+description: Orchestrate coding agents in herdr or herdr-app using pane workers or herdr-core (hc) terminals. Use inside HERDR_ENV=1 or HC_TERMINAL_ID sessions when independent work or a second review benefits from delegation, or when explicitly asked to use herdr-orch. Keep the calling agent as orchestrator.
 ---
 
 # herdr-orch
+
+Choose the runtime before running commands:
+
+- **herdr-app / herdr-core:** when `HC_TERMINAL_ID` is set, read [references/herdr-core.md](references/herdr-core.md) and follow only that procedure. Use `hc` directly; `orch.mjs` manages the older herdr pane API only.
+- **Older herdr:** when `HERDR_ENV=1` and no `HC_TERMINAL_ID` is set, follow the procedure below.
+- **Neither variable:** do not guess the caller from the focused window, app names, folders or agent status. If the user says this session is in herdr-app, read the hc reference for how to obtain its address. Do not run legacy `orch spawn` or create workers until the caller is identified.
+
+A worker must not start more workers unless explicitly assigned to do so. Keep planning, integration and the final response in the calling session.
+
+## Older herdr
 
 You are the orchestrator in pane `$HERDR_PANE_ID`. Plan the work, split it, brief workers, check their results and integrate them. Keep planning, synthesis and the final review in this pane.
 

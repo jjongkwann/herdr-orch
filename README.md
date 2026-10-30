@@ -14,7 +14,22 @@ The grid follows the tab size. Every pane keeps at least 80x24 cells, so a lapto
 
 Workers can be any agent kind herdr recognizes: Claude Code, Codex, Gemini CLI, Antigravity CLI, OpenCode and others. You can mix kinds in one tab.
 
-## Requirements
+## herdr-app / herdr-core
+
+The skill also supports herdr-app through native `hc` commands. With
+`HC_TERMINAL_ID` set, it uses the [hc procedure](skills/herdr-orch/references/herdr-core.md)
+instead of `orch.mjs`: background interactive workers, report files, blocking
+waits and cleanup restricted to workers it created. Workers stay hidden unless
+you ask to show them; the legacy pane grid and `ORCH_MIN_PANE` do not apply.
+The runtime manuals (`hc --skill`, `herdr-app --skill`) define the installed API.
+Node.js is only required for the older herdr helper.
+
+If an agent harness does not pass `HC_TERMINAL_ID` to its command environment,
+supply the exact terminal address explicitly after identifying it in Herdr.
+The skill never uses the focused pane as a substitute for session identity.
+Codex sessions must start with `--no-daemon` so their commands retain hc context.
+
+## Requirements (older herdr)
 
 - herdr 0.9.5 or later, with the agents you want to use installed
 - Node.js 18 or later
