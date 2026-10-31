@@ -26,7 +26,7 @@ If your always-loaded instructions (such as AGENTS.md, CLAUDE.md or GEMINI.md) d
 ## Commands
 
 ```
-orch spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [-- agent args]
+orch spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [--role ROLE] [--model MODEL] [--effort LEVEL] [-- agent args]
 orch send <name> "<prompt>"                      # or - to read stdin; returns once the worker starts
 orch wait [<name>...] [--any] [--timeout SEC]    # block until workers finish; print report summaries
 orch ask <name> "<prompt>"                       # send, then wait for that worker
@@ -41,10 +41,11 @@ orch close [--force]                             # close free slots; --force clo
 
 - `spawn` reuses a free slot in the same directory before opening a new pane. Run spawns one at a time.
 - `--worktree` creates `../<repo>-<name>` on a new branch `<name>` from `--base` (default: the current branch of `--cwd`) and starts the worker there; spawning the same name with `--worktree` again reuses it. `orch worktrees` shows each worktree orch made: in use by a worker, uncommitted changes, commits not yet in its base, or merged. With `--clean` it removes the merged ones that no worker uses and deletes their branches. It never touches worktrees orch did not create. Pass `--base` to compare with another branch, such as the one you merged into.
-- `kind` is a herdr agent kind; `herdr agent` lists them. Claude Code workers start without MCP servers (`--strict-mcp-config`) to keep startup context and memory small; add `--mcp` when the task needs those tools. Pass model or effort flags after `--`, for example `-- --model sonnet`.
+- `kind` is a herdr agent kind; `herdr agent` lists them. Claude Code workers start without MCP servers (`--strict-mcp-config`) to keep startup context and memory small; add `--mcp` when the task needs those tools.
+- `--role` applies the default effort from the role's file (`effort:` at the top of `references/roles/<role>.md`): `xhigh` for reviewer and debugger, none for the others; no role sets a model. `--model` and `--effort` override it; with neither, the agent's own configuration decides. Use them to follow the user's model and effort preferences. `orch` passes them in each kind's form (Claude Code and Antigravity `--effort`, Codex `-c model_reasoning_effort=`). For other kinds and other flags, pass them after `--`; they come last.
 - `send` appends a report contract: the worker writes the full result to a report file whose first lines are status, changed files and a one-line summary, and replies with only the path. `wait` prints the path and those lines.
 - `wait` without names waits for every worker that has an unfinished report. When a worker is blocked, `wait` also shows a herdr notification so the user sees it.
-- `orch` keeps a journal of spawns, prompts, results, stops and closes for the tab. After your context was compacted or restarted, or whenever you are unsure what is pending, run `orch log`: it lists the run's events and, for each worker's last prompt, whether its report is still unread, the worker is still working, or it exited without a report. A `close` that leaves no slots ends the run.
+- `orch` keeps a journal of spawns with the arguments each agent started with, prompts, results, stops and closes for the tab. After your context was compacted or restarted, or whenever you are unsure what is pending, run `orch log`: it lists the run's events and, for each worker's last prompt, whether its report is still unread, the worker is still working, or it exited without a report. A `close` that leaves no slots ends the run.
 
 ## When to use a worker
 
@@ -57,7 +58,7 @@ Use workers proactively: when one of these situations comes up, open the worker 
 | The task needs research that the implementation does not have to wait for | `researcher` |
 | The same build or test failure remains after two fix attempts | `debugger`, given the failing command and what was tried |
 
-- Brief each worker with its role: start the prompt with `Read <skill directory>/references/roles/<role>.md and follow it.`, then give the task.
+- Spawn each worker with `--role <role>` and brief it with that role: start the prompt with `Read <skill directory>/references/roles/<role>.md and follow it.`, then give the task.
 - Keep short lookups that nobody needs to watch out of panes: do them yourself or with your harness's own subagents.
 - Roles are not tied to kinds; choose the kind per task. A reviewer of another kind, or at least with a fresh context, catches more than the author. Follow the user's instructions about which agents to use and how sparingly; they override this table. Without such instructions, use your own kind.
 

@@ -52,10 +52,12 @@ Agents choose skills from a one-line description, and their built-in subagents u
 
 Inside herdr, the agent also uses the skill without being asked when a task has independent parts or a code change should get a second reviewer. Workers are briefed with a role from `references/roles/`: reviewer, implementer, researcher or debugger. Work is split by context rather than by role, and the orchestrator does its own planning. Your own instructions about which agents to use and how sparingly take precedence.
 
+Spawned with `--role`, reviewers and debuggers start at `xhigh` reasoning effort, the default their role files set. Other roles keep each agent's configured effort, and no role sets a model. `spawn --model` and `--effort` override both, and `orch` passes them in each kind's form: `--effort` for Claude Code and Antigravity, `-c model_reasoning_effort=` for Codex. Put your preferences in your agent instructions, for example "Run herdr-orch reviewers on Opus." Claude Code runs a level the model does not support at the highest level it does; with Codex, use a model that supports the level.
+
 The orchestrator calls `scripts/orch.mjs`, which you can also run yourself from a herdr pane:
 
 ```
-node scripts/orch.mjs spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [-- agent args]
+node scripts/orch.mjs spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [--role ROLE] [--model MODEL] [--effort LEVEL] [-- agent args]
 node scripts/orch.mjs send <name> "<prompt>"
 node scripts/orch.mjs wait [<name>...] [--any] [--timeout SEC]
 node scripts/orch.mjs ask <name> "<prompt>"
@@ -70,7 +72,7 @@ node scripts/orch.mjs close [--force]
 
 Workers that edit files in parallel each get their own git worktree: `spawn --worktree` creates `../<repo>-<name>` on a new branch `<name>` and starts the worker there. After the orchestrator merges the branches, `worktrees --clean` removes the worktrees that are fully merged and no longer in use, and deletes their branches. It keeps anything with uncommitted changes or unmerged commits, and it ignores worktrees that `orch` did not create.
 
-`orch` writes each spawn, prompt, result, stop and close to a journal for the tab. `log` prints the current run from it, along with the workers whose last prompt is still open: report not yet read, still working, or exited without a report. The orchestrator runs it after its context is compacted or restarted. When `wait` sees a worker blocked at an approval or question, it shows a herdr notification.
+`orch` writes each spawn with the arguments the agent started with, and each prompt, result, stop and close, to a journal for the tab. `log` prints the current run from it, along with the workers whose last prompt is still open: report not yet read, still working, or exited without a report. The orchestrator runs it after its context is compacted or restarted. When `wait` sees a worker blocked at an approval or question, it shows a herdr notification.
 
 `lessons` prints two Markdown files of lessons, one for the current project (keyed by its git remote) and one for all projects. The orchestrator reads them before it opens the first worker. Before the final `close`, it updates them from the journal: each lesson has a trigger, an action, a confidence and the evidence behind it, such as "Codex workers stop at the trust prompt in new worktrees".
 

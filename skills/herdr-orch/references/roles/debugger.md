@@ -1,3 +1,7 @@
+---
+effort: xhigh
+---
+
 # Debugger
 
 Find and fix the cause of the failure described in the task.

@@ -21,7 +21,8 @@ An unavailable caller does not block read-only repository work.
 ## Dispatch and collect
 
 Keep a record of the terminal addresses returned by launches, their machines,
-report paths and worktrees in a local file, such as one in your scratch folder,
+the model and effort flags each started with, report paths and worktrees in a
+local file, such as one in your scratch folder,
 so it survives context compaction; reread it whenever you are unsure what is
 pending. Use exact addresses for later commands, rather than names that could
 be reused. Restrict cleanup to this record. Default to at most five workers, or
@@ -42,7 +43,7 @@ model preferences. For Claude Code without MCP, an example is:
 
 ```sh
 hc run --bg --name review --parent "$HC_TERMINAL_ID" --cwd /absolute/repo \
-  env PATH="$PATH" claude --strict-mcp-config \
+  env PATH="$PATH" claude --strict-mcp-config --effort xhigh \
   "Read /absolute/skill/references/roles/reviewer.md. Review only the requested diff. Do not edit source or launch agents. Write your report to /absolute/scratch/review.md even if blocked. Start with status, changed files and a one-line summary. Report the path with hc send $HC_TERMINAL_ID when done or stuck."
 ```
 
@@ -52,7 +53,15 @@ caller address, use that exact address in both `--parent` and the prompt.
 `env PATH="$PATH"` gives the worker your PATH: the core starts programs with the
 environment of whatever started the core, and a core started by another
 machine's ssh connection has only the system PATH, so neither the agent nor
-`hc` is found (`spawn_failed`). Include explicit supported model/effort flags when required.
+`hc` is found (`spawn_failed`).
+
+A template's command holds the user's model and effort choices; keep them.
+Without a template, use the default effort a role file may set at its top
+(`effort: xhigh` for reviewer and debugger) unless the user's preferences or
+the task call for another level. When the role file sets none, leave effort to
+the agent's own configuration. Claude Code and Antigravity take `--effort <level>`, Codex
+`-c model_reasoning_effort=<level>`. No role sets a model; pass `--model` only
+to follow the user's preferences or the task.
 Codex workers also need `--no-daemon`. Never use one-shot print mode for agents.
 
 A worker started with `--on <machine>` runs and writes its report on that

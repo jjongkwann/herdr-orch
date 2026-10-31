@@ -9,11 +9,13 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 const USAGE = `usage: node orch.mjs <command> [options]
 
-  spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [-- agent args]
+  spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp]
+        [--role ROLE] [--model MODEL] [--effort LEVEL] [-- agent args]
                         start a worker in a free slot or a new pane
   send <name> <prompt|->
                         submit a prompt; returns once the worker starts
@@ -45,6 +47,13 @@ const REPORT_DIR = join(STATE_DIR, "reports");
 const NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/;
 // Slash commands that end each agent's session; other kinds get Ctrl+C twice.
 const EXIT_COMMAND = { claude: "/exit", codex: "/quit", agy: "/exit" };
+// How each agent kind takes a model and a reasoning effort; other kinds get theirs after --.
+const AGENT_ARGS = {
+  claude: { model: (m) => ["--model", m], effort: (e) => ["--effort", e] },
+  codex: { model: (m) => ["--model", m], effort: (e) => ["-c", `model_reasoning_effort=${e}`] },
+  agy: { model: (m) => ["--model", m], effort: (e) => ["--effort", e] },
+};
+const ROLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "references", "roles");
 const contract = (path) => `
 
 ---
@@ -366,12 +375,32 @@ function worktrees(values) {
   console.log(lines.length ? lines.join("\n") : "no worktrees made by orch in this repository");
 }
 
+// The default effort a role file sets in its front matter, if any.
+function roleEffort(role) {
+  const roles = readdirSync(ROLES_DIR).map((f) => basename(f, ".md"));
+  if (!roles.includes(role)) die(`no role ${role}; roles: ${roles.join(", ")}`);
+  const front = readFileSync(join(ROLES_DIR, `${role}.md`), "utf8").match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] || "";
+  return front.match(/^effort:\s*["']?([a-z]+)/m)?.[1];
+}
+
 function spawnWorker(positionals, values, extra) {
   const [name, kind] = positionals;
-  if (!name || !kind) die("usage: spawn <name> <kind> [--cwd DIR] [--mcp] [-- agent args]");
+  if (!name || !kind) die("usage: spawn <name> <kind> [--cwd DIR] [--worktree [--base REF]] [--mcp] [--role ROLE] [--model MODEL] [--effort LEVEL] [-- agent args]");
   if (!NAME_RE.test(name)) die("name must match [a-z][a-z0-9_-]{0,31}");
   if (agentExists(name)) die(`agent ${name} already exists`);
   if (values.base && !values.worktree) die("--base needs --worktree");
+
+  // --model and --effort win over the role's default; without either, the agent's own config decides.
+  const agentArgs = kind === "claude" ? ["-n", name, ...(values.mcp ? [] : ["--strict-mcp-config"])] : [];
+  const flags = AGENT_ARGS[kind];
+  if ((values.model || values.effort) && !flags) die(`no model or effort flags are known for ${kind}; pass them after --`);
+  const roleDefault = values.role && roleEffort(values.role);
+  const effort = values.effort || roleDefault;
+  if (values.model) agentArgs.push(...flags.model(values.model));
+  if (effort && flags) agentArgs.push(...flags.effort(effort));
+  else if (effort) console.error(`orch: the ${values.role} role's effort ${effort} was not applied; pass the flag for ${kind} after --`);
+  agentArgs.push(...extra);
+
   let cwd = resolve(values.cwd || process.cwd());
   const t = openTab();
   if (values.worktree) {
@@ -419,12 +448,10 @@ function spawnWorker(positionals, values, extra) {
     if (!waitUntil(() => isFree(pane, new Map()), 10000)) die(`shell in ${pane} did not become ready`);
   }
 
-  const agentArgs = kind === "claude" ? ["-n", name, ...(values.mcp ? [] : ["--strict-mcp-config"])] : [];
-  agentArgs.push(...extra);
   const start = ["agent", "start", name, "--kind", kind, "--pane", pane];
   if (agentArgs.length) start.push("--", ...agentArgs);
   const proc = herdr(start, { check: false });
-  const event = { event: "spawn", name, kind, pane, cwd };
+  const event = { event: "spawn", name, kind, pane, cwd, args: agentArgs };
   if (proc.status !== 0) {
     const error = errorText(proc);
     journal(t.tab, { ...event, error });
@@ -618,7 +645,7 @@ const clock = (iso) => new Date(iso).toTimeString().slice(0, 8);
 function eventLine(e) {
   const at = clock(e.t);
   switch (e.event) {
-    case "spawn": return `${at} spawn ${e.name} ${e.kind} in ${e.cwd}${e.error ? ` failed: ${e.error}` : ""}`;
+    case "spawn": return `${at} spawn ${e.name} ${e.kind} in ${e.cwd}${e.args?.length ? ` with ${e.args.join(" ")}` : ""}${e.error ? ` failed: ${e.error}` : ""}`;
     case "send": return `${at} send ${e.name}: ${e.prompt}${e.error ? ` (${e.error})` : ""}`;
     case "result": return `${at} result ${e.name}: ${e.status}${e.written ? "" : ", no report"}`;
     case "stop": return `${at} stop ${e.name}${e.stopped ? "" : " failed"}`;
@@ -758,6 +785,9 @@ function main() {
       options: {
         cwd: { type: "string" },
         mcp: { type: "boolean" },
+        role: { type: "string" },
+        model: { type: "string" },
+        effort: { type: "string" },
         worktree: { type: "boolean" },
         base: { type: "string" },
         clean: { type: "boolean" },

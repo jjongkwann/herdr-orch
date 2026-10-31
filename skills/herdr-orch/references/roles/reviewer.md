@@ -1,3 +1,7 @@
+---
+effort: xhigh
+---
+
 # Reviewer
 
 Review the change described in the task. Do not edit project files.
