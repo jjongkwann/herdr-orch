@@ -20,9 +20,11 @@ An unavailable caller does not block read-only repository work.
 
 ## Dispatch and collect
 
-Keep a task-local record of terminal addresses returned by launches and their
-report paths. Use exact addresses for later commands, rather than names that
-could be reused. Restrict cleanup to this record. Default to at most five
+Keep a record of the terminal addresses returned by launches, their machines,
+report paths and worktrees in a file beside the reports, so it survives context
+compaction; reread it whenever you are unsure what is pending. Use exact
+addresses for later commands, rather than names that could be reused. Restrict
+cleanup to this record. Default to at most five
 workers, or `ORCH_MAX_WORKERS` if set. Pane dimensions do not limit hidden
 workers.
 
@@ -49,6 +51,11 @@ caller address, use that exact address in both `--parent` and the prompt.
 Include explicit supported model/effort flags when required. Codex workers
 also need `--no-daemon`. Never use one-shot print mode for agents.
 
+A worker started with `--on <machine>` runs and writes its report on that
+machine, and its address is `machine/t3`. Give it a report path there and read
+the report with `hc file read --on <machine> <path>`; your own file tools see
+only this machine.
+
 Put the initial task in `hc run`. Check the returned address and
 `first_message.sent`: false means the task was not submitted. Read that terminal
 and resolve readiness before sending; do not blindly resend on an error.
@@ -61,6 +68,12 @@ hc get <worker-address>
 hc read <worker-address> --lines 100
 hc send <worker-address> "Follow-up within the same scope"
 ```
+
+A wait checks in after 180 seconds unless `--timeout` or the config's
+`wait_timeout` says otherwise. If your harness ends commands sooner (Claude
+Code's Bash tool stops them after 120 seconds by default), pass a shorter
+`--timeout`, or run the wait in the background where the harness reports its
+exit.
 
 Use `--children all` when all results are needed. Children waits also include
 other children of the caller: compare results against the task's recorded
