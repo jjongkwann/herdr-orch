@@ -375,12 +375,13 @@ function worktrees(values) {
   console.log(lines.length ? lines.join("\n") : "no worktrees made by orch in this repository");
 }
 
-// The default effort a role file sets in its front matter, if any.
-function roleEffort(role) {
+// The defaults a role file sets in its front matter: a Claude Code model and an effort.
+function roleDefaults(role) {
   const roles = readdirSync(ROLES_DIR).map((f) => basename(f, ".md"));
   if (!roles.includes(role)) die(`no role ${role}; roles: ${roles.join(", ")}`);
   const front = readFileSync(join(ROLES_DIR, `${role}.md`), "utf8").match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] || "";
-  return front.match(/^effort:\s*["']?([a-z]+)/m)?.[1];
+  const field = (key) => front.match(new RegExp(`^${key}:[ \\t]*["']?([\\w.\\[\\]-]+)`, "m"))?.[1];
+  return { model: field("model"), effort: field("effort") };
 }
 
 function spawnWorker(positionals, values, extra) {
@@ -390,13 +391,15 @@ function spawnWorker(positionals, values, extra) {
   if (agentExists(name)) die(`agent ${name} already exists`);
   if (values.base && !values.worktree) die("--base needs --worktree");
 
-  // --model and --effort win over the role's default; without either, the agent's own config decides.
+  // --model and --effort win over the role's defaults; without either, the agent's own config decides.
+  // A role's model is a Claude Code alias, so other kinds keep their configured model.
   const agentArgs = kind === "claude" ? ["-n", name, ...(values.mcp ? [] : ["--strict-mcp-config"])] : [];
   const flags = AGENT_ARGS[kind];
   if ((values.model || values.effort) && !flags) die(`no model or effort flags are known for ${kind}; pass them after --`);
-  const roleDefault = values.role && roleEffort(values.role);
-  const effort = values.effort || roleDefault;
-  if (values.model) agentArgs.push(...flags.model(values.model));
+  const role = values.role ? roleDefaults(values.role) : {};
+  const model = values.model || (kind === "claude" ? role.model : undefined);
+  const effort = values.effort || role.effort;
+  if (model) agentArgs.push(...flags.model(model));
   if (effort && flags) agentArgs.push(...flags.effort(effort));
   else if (effort) console.error(`orch: the ${values.role} role's effort ${effort} was not applied; pass the flag for ${kind} after --`);
   agentArgs.push(...extra);

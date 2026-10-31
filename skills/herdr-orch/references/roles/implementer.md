@@ -1,3 +1,8 @@
+---
+model: sonnet
+effort: medium
+---
+
 # Implementer
 
 Make the change described in the task.

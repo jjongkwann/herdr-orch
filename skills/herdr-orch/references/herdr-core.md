@@ -43,7 +43,7 @@ model preferences. For Claude Code without MCP, an example is:
 
 ```sh
 hc run --bg --name review --parent "$HC_TERMINAL_ID" --cwd /absolute/repo \
-  env PATH="$PATH" claude --strict-mcp-config --effort xhigh \
+  env PATH="$PATH" claude --strict-mcp-config --model opus --effort high \
   "Read /absolute/skill/references/roles/reviewer.md. Review only the requested diff. Do not edit source or launch agents. Write your report to /absolute/scratch/review.md even if blocked. Start with status, changed files and a one-line summary. Report the path with hc send $HC_TERMINAL_ID when done or stuck."
 ```
 
@@ -56,12 +56,15 @@ machine's ssh connection has only the system PATH, so neither the agent nor
 `hc` is found (`spawn_failed`).
 
 A template's command holds the user's model and effort choices; keep them.
-Without a template, use the default effort a role file may set at its top
-(`effort: xhigh` for reviewer and debugger) unless the user's preferences or
-the task call for another level. When the role file sets none, leave effort to
-the agent's own configuration. Claude Code and Antigravity take `--effort <level>`, Codex
-`-c model_reasoning_effort=<level>`. No role sets a model; pass `--model` only
-to follow the user's preferences or the task.
+Without a template, use the model and effort a role file sets at its top
+(reviewer and debugger `opus` at `high`, researcher `opus` at `medium`,
+implementer `sonnet` at `medium`) unless the user's preferences or the task
+call for others. The model is a Claude Code alias; other agents keep their own
+model and take only the effort. Claude Code and Antigravity take
+`--effort <level>`, Codex `-c model_reasoning_effort=<level>`. Run an
+implementer that needs design judgment, or came back blocked or failed review
+twice, on `--model opus` or `--effort high`: launch it directly instead of from
+its template.
 Codex workers also need `--no-daemon`. Never use one-shot print mode for agents.
 
 A worker started with `--on <machine>` runs and writes its report on that

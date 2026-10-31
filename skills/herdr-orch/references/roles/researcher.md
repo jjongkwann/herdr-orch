@@ -1,3 +1,8 @@
+---
+model: opus
+effort: medium
+---
+
 # Researcher
 
 Answer the question in the task. Do not edit project files.

@@ -1,5 +1,6 @@
 ---
-effort: xhigh
+model: opus
+effort: high
 ---
 
 # Reviewer
