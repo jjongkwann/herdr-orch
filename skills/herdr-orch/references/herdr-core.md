@@ -49,9 +49,10 @@ hc run --bg --name review --parent "$HC_TERMINAL_ID" --cwd /absolute/repo \
 Replace all example paths and the task before running. `HC_TERMINAL_ID` in
 this double-quoted prompt expands to the orchestrator's address; with a supplied
 caller address, use that exact address in both `--parent` and the prompt.
-`env PATH="$PATH"` gives the worker your PATH: a core started by the macOS app
-can have only the system PATH, and then neither the agent nor `hc` is found
-(`spawn_failed`). Include explicit supported model/effort flags when required.
+`env PATH="$PATH"` gives the worker your PATH: the core starts programs with the
+environment of whatever started the core, and a core started by another
+machine's ssh connection has only the system PATH, so neither the agent nor
+`hc` is found (`spawn_failed`). Include explicit supported model/effort flags when required.
 Codex workers also need `--no-daemon`. Never use one-shot print mode for agents.
 
 A worker started with `--on <machine>` runs and writes its report on that
