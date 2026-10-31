@@ -21,12 +21,11 @@ An unavailable caller does not block read-only repository work.
 ## Dispatch and collect
 
 Keep a record of the terminal addresses returned by launches, their machines,
-report paths and worktrees in a file beside the reports, so it survives context
-compaction; reread it whenever you are unsure what is pending. Use exact
-addresses for later commands, rather than names that could be reused. Restrict
-cleanup to this record. Default to at most five
-workers, or `ORCH_MAX_WORKERS` if set. Pane dimensions do not limit hidden
-workers.
+report paths and worktrees in a local file, such as one in your scratch folder,
+so it survives context compaction; reread it whenever you are unsure what is
+pending. Use exact addresses for later commands, rather than names that could
+be reused. Restrict cleanup to this record. Default to at most five workers, or
+`ORCH_MAX_WORKERS` if set. Pane dimensions do not limit hidden workers.
 
 Give each worker a bounded scope, constraints, done criteria and an absolute
 report path. Brief it with the applicable file in `roles/` beside this reference.
@@ -41,24 +40,32 @@ model preferences. For Claude Code without MCP, an example is:
 
 ```sh
 hc run --bg --name review --parent "$HC_TERMINAL_ID" --cwd /absolute/repo \
-  claude --strict-mcp-config \
+  env PATH="$PATH" claude --strict-mcp-config \
   "Read /absolute/skill/references/roles/reviewer.md. Review only the requested diff. Do not edit source or launch agents. Write your report to /absolute/scratch/review.md even if blocked. Start with status, changed files and a one-line summary. Report the path with hc send $HC_TERMINAL_ID when done or stuck."
 ```
 
 Replace all example paths and the task before running. `HC_TERMINAL_ID` in
 this double-quoted prompt expands to the orchestrator's address; with a supplied
 caller address, use that exact address in both `--parent` and the prompt.
-Include explicit supported model/effort flags when required. Codex workers
-also need `--no-daemon`. Never use one-shot print mode for agents.
+`env PATH="$PATH"` gives the worker your PATH: a core started by the macOS app
+can have only the system PATH, and then neither the agent nor `hc` is found
+(`spawn_failed`). Include explicit supported model/effort flags when required.
+Codex workers also need `--no-daemon`. Never use one-shot print mode for agents.
 
 A worker started with `--on <machine>` runs and writes its report on that
-machine, and its address is `machine/t3`. Give it a report path there and read
-the report with `hc file read --on <machine> <path>`; your own file tools see
-only this machine.
+machine, and its address is `<machine>/<id>`. Give it a report path there and
+read the report with `hc file read --on <machine> <path>`; your own file tools
+see only this machine. That machine's hc cannot reach your address, so leave
+`hc send` out of the worker's prompt and rely on `hc wait --children`, which
+reports remote children too. Leave out `env PATH="$PATH"` as well; check that
+the agent is found there with, for example,
+`hc exec --on <machine> -- sh -c 'command -v claude hc'`.
 
-Put the initial task in `hc run`. Check the returned address and
-`first_message.sent`: false means the task was not submitted. Read that terminal
-and resolve readiness before sending; do not blindly resend on an error.
+Put the initial task in `hc run`. A template launch returns
+`first_message.sent`; false means the task was not submitted. A task passed as
+the agent's own argument, as above, returns no such field; `hc get <address>`
+shows whether it started working. Read that terminal and resolve readiness
+before sending; do not blindly resend on an error.
 
 Continue independent work, then block using:
 
