@@ -1,5 +1,7 @@
 # herdr-orch
 
+English | [한국어](README.ko.md)
+
 An agent skill that turns one [herdr](https://herdr.dev) tab into a small team of coding agents. The pane you start it from is the orchestrator. It opens worker panes beside itself as the work needs them, briefs each worker, waits for results without polling, and closes the panes when the work is done.
 
 ```
