@@ -35,6 +35,8 @@ removing only the ones you created. Do not use legacy `orch worktrees` to track
 hc workers.
 
 Use a fitting template when available; inspect its command/model before use.
+A template's `command` cannot expand `$PATH`, so a template for a core with only
+the system PATH writes the PATH out (`env PATH=/Users/me/.local/bin:... claude`).
 Otherwise launch an interactive agent directly, following the user's agent and
 model preferences. For Claude Code without MCP, an example is:
 
@@ -59,13 +61,17 @@ see only this machine. That machine's hc cannot reach your address, so leave
 `hc send` out of the worker's prompt and rely on `hc wait --children`, which
 reports remote children too. Leave out `env PATH="$PATH"` as well; check that
 the agent is found there with, for example,
-`hc exec --on <machine> -- sh -c 'command -v claude hc'`.
+`hc exec --on <machine> -- sh -c 'command -v claude'`, or
+`hc exec --on <machine> -- where claude` on Windows. The launch reply for a
+Windows machine may not parse as JSON (an unescaped `cwd`); then look the worker
+up with `hc get <name>`.
 
 Put the initial task in `hc run`. A template launch returns
 `first_message.sent`; false means the task was not submitted. A task passed as
 the agent's own argument, as above, returns no such field; `hc get <address>`
-shows whether it started working. Read that terminal and resolve readiness
-before sending; do not blindly resend on an error.
+shows whether it started working. A worker that reports no status at all may be
+stopped at a startup dialog such as folder trust. Read that terminal and resolve
+readiness before sending; do not blindly resend on an error.
 
 Continue independent work, then block using:
 
@@ -80,7 +86,9 @@ A wait checks in after 180 seconds unless `--timeout` or the config's
 `wait_timeout` says otherwise. If your harness ends commands sooner (Claude
 Code's Bash tool stops them after 120 seconds by default), pass a shorter
 `--timeout`, or run the wait in the background where the harness reports its
-exit.
+exit. `hc get` and `hc read` mark a child's news as seen, so a later
+`--children any` does not return for it; the wait result's `children` still
+lists each child's status.
 
 Use `--children all` when all results are needed. Children waits also include
 other children of the caller: compare results against the task's recorded
@@ -97,6 +105,10 @@ unless the user requests visible workers. For requested screen changes, inspect
 `herdr-app ls`, `status` and `commands`, use explicit IDs, and confirm the
 result. Do not launch bare `herdr-app`, switch focus, or create a space/tab just
 to orchestrate. Never change or stop the user's app/core service.
+
+hc types notes about children and their messages into your terminal, so they can
+land in the middle of what the user is typing there. `hc run --no-notify` stops
+the notes; `hc wait --children` still reports that child.
 
 After accepting results, `hc kill <worker-address>` ends a worker and
 `hc rm <worker-address>` removes its finished terminal. Check state if either
