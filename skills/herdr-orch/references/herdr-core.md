@@ -36,6 +36,12 @@ removing only the ones you created. Do not use legacy `orch worktrees` to track
 hc workers.
 
 Use a fitting template when available; inspect its command/model before use.
+herdr-orch's templates are named `orch-<role>` (`orch-reviewer`,
+`orch-implementer`, `orch-researcher`, `orch-debugger`). Templates with other
+names belong to other tools, even when the role name matches (Shepherdr ships
+`reviewer`, `worker` and `assistant` with its own instructions); do not launch
+them for herdr-orch work. A template you write for a role takes the same name,
+so it does not replace another tool's file in `~/.config/herdr-core/templates`.
 A template's `command` cannot expand `$PATH`, so a template for a core with only
 the system PATH writes the PATH out (`env PATH=/Users/me/.local/bin:... claude`).
 Otherwise launch an interactive agent directly, following the user's agent and
