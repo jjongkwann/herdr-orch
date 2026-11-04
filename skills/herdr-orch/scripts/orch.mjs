@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import {
   appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { freemem, homedir, totalmem } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -35,6 +35,8 @@ const USAGE = `usage: node orch.mjs <command> [options]
   close [--force]       close free slots (--force also closes busy ones)`;
 
 const MAX_WORKERS = Number(process.env.ORCH_MAX_WORKERS || 5);
+// Below this share of free memory, spawn refuses: a machine out of memory can end every agent at once.
+const MIN_FREE_MEM = Number(process.env.ORCH_MIN_FREE_MEM || 15);
 const [MIN_WIDTH, MIN_HEIGHT] = (process.env.ORCH_MIN_PANE || "80x24").split("x").map(Number);
 const STATE_DIR = join(
   process.env.XDG_STATE_HOME ||
@@ -54,10 +56,11 @@ const AGENT_ARGS = {
   agy: { model: (m) => ["--model", m], effort: (e) => ["--effort", e] },
 };
 const ROLES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "references", "roles");
+const WORKER_FILE = resolve(ROLES_DIR, "..", "worker.md");
 const contract = (path) => `
 
 ---
-You are a herdr-orch worker: do not open panes or start agents with herdr-orch. When you finish, write the full result as Markdown to ${path}; write this report even if the task says not to change files. Start that file with at most five lines: status (done, blocked or failed), changed files, and a one-line summary. Put the details below them. Then reply with only the report path.`;
+You are a herdr-orch worker: do not open panes or start agents with herdr-orch. Read ${WORKER_FILE} and follow it. When you finish, write the full result as Markdown to ${path}; write this report even if the task says not to change files. Start that file with four lines: status (done, blocked or failed), changed files, your final commit (or none), and a summary of at most 160 characters in plain words. Put the details below them. Then reply with only the report path.`;
 
 // Agents pick skills from one-line descriptions, and built-in subagents usually
 // win; this rule in the user's always-loaded instructions makes them use workers.
@@ -375,6 +378,27 @@ function worktrees(values) {
   console.log(lines.length ? lines.join("\n") : "no worktrees made by orch in this repository");
 }
 
+// The share of memory free on this machine, in percent, or null when unknown.
+// macOS: os.freemem() leaves out reclaimable memory, so ask memory_pressure.
+function freeMemoryPercent() {
+  if (process.platform === "darwin") {
+    const out = spawnSync("memory_pressure", ["-Q"], { encoding: "utf8" }).stdout || "";
+    const m = out.match(/free percentage:\s*(\d+)%/);
+    return m ? Number(m[1]) : null;
+  }
+  if (process.platform === "linux") {
+    try {
+      const info = readFileSync("/proc/meminfo", "utf8");
+      const kb = (key) => Number(info.match(new RegExp(`^${key}:\\s+(\\d+)`, "m"))?.[1]);
+      const pct = Math.round((100 * kb("MemAvailable")) / kb("MemTotal"));
+      return Number.isFinite(pct) ? pct : null;
+    } catch {
+      return null;
+    }
+  }
+  return Math.round((100 * freemem()) / totalmem());
+}
+
 // The defaults a role file sets in its front matter: a Claude Code model and an effort.
 function roleDefaults(role) {
   const roles = readdirSync(ROLES_DIR).map((f) => basename(f, ".md"));
@@ -390,6 +414,8 @@ function spawnWorker(positionals, values, extra) {
   if (!NAME_RE.test(name)) die("name must match [a-z][a-z0-9_-]{0,31}");
   if (agentExists(name)) die(`agent ${name} already exists`);
   if (values.base && !values.worktree) die("--base needs --worktree");
+  const free = freeMemoryPercent();
+  if (free !== null && free < MIN_FREE_MEM) die(`only ${free}% of memory is free (ORCH_MIN_FREE_MEM is ${MIN_FREE_MEM}%); wait for a worker to finish, or ask the user before starting more`);
 
   // --model and --effort win over the role's defaults; without either, the agent's own config decides.
   // A role's model is a Claude Code alias, so other kinds keep their configured model.

@@ -78,6 +78,17 @@ Workers that edit files in parallel each get their own git worktree: `spawn --wo
 
 `lessons` prints two Markdown files of lessons, one for the current project (keyed by its git remote) and one for all projects. The orchestrator reads them before it opens the first worker. Before the final `close`, it updates them from the journal: each lesson has a trigger, an action, a confidence and the evidence behind it, such as "Codex workers stop at the trust prompt in new worktrees".
 
+## Briefs, reviews and proof
+
+`references/workflow.md` is the orchestrator's side and `references/worker.md` the worker's, in both herdr and herdr-app:
+
+- Every brief ends with a Settings block: role, scope, base, `Review: on, 2 rounds, must fix: major`, `Proof: required`, commit and done criteria.
+- Reviewers give each finding a level (blocker, major, minor) and evidence, and name the commit they reviewed. Findings at or above the must-fix level go back to the same implementer; the loop stops when a round finds none or the rounds run out, and only a reviewed final commit is accepted. A finding the implementer rejects is decided from the evidence and reported, never dropped to end the loop.
+- Reports start with status, changed files, final commit and a plain summary of at most 160 characters, then details, proof, what is not proven, follow-ups and notes for the repository's `AGENTS.md`. A bug fix shows the same reproduction failing before and passing after; a mocked test does not count as proof of what a person sees.
+- A worker that needs a decision asks with its CLI's question tool; the orchestrator puts the question to you and answers with your choice.
+- In herdr-app, workers set `orch.status` and `orch.done` labels on their terminals, which `hc get` shows.
+- Before each launch the orchestrator checks free memory; `orch spawn` refuses below 15%.
+
 ## How it keeps token use down
 
 - `wait` blocks on herdr's agent state, so the orchestrator spends nothing while workers run. Claude Code runs it in the background and is notified when it returns.
@@ -92,6 +103,7 @@ Workers that edit files in parallel each get their own git worktree: `spawn --wo
 |---|---|---|
 | `ORCH_MIN_PANE` | `80x24` | Smallest pane, in columns x rows; decides how many panes fit the tab |
 | `ORCH_MAX_WORKERS` | `5` | Upper limit on workers, however large the tab is |
+| `ORCH_MIN_FREE_MEM` | `15` | Percent of memory that must be free for a new worker |
 | `XDG_STATE_HOME` | `~/.local/state` (`%LOCALAPPDATA%` on Windows) | Where `herdr-orch/` keeps slot state, journals, lessons and reports |
 
 To say which agents the orchestrator should prefer, put it in your agent instructions (for example `AGENTS.md`): "When orchestrating with herdr-orch, use Claude Code workers by default and Codex only when asked."

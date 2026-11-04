@@ -69,6 +69,17 @@ node scripts/orch.mjs close [--force]
 
 `lessons`는 교훈을 담은 Markdown 파일 두 개를 출력합니다. 하나는 현재 프로젝트용(git remote 기준)이고 다른 하나는 모든 프로젝트용입니다. 오케스트레이터는 첫 워커를 열기 전에 이 파일들을 읽고, 마지막 `close` 전에 journal을 보고 갱신합니다. 각 교훈에는 trigger, action, confidence와 근거가 있습니다. 예: "Codex 워커는 새 worktree에서 trust 프롬프트에 멈춘다."
 
+## 작업 지시, 리뷰, 증거
+
+구 herdr와 herdr-app 모두에서 오케스트레이터 쪽 규칙은 `references/workflow.md`에, 워커 쪽 규칙은 `references/worker.md`에 있습니다.
+
+- 모든 작업 지시는 Settings 블록으로 끝납니다. 역할, 범위, 기준 커밋, `Review: on, 2 rounds, must fix: major`, `Proof: required`, 커밋 여부, 완료 조건을 적습니다.
+- 리뷰어는 지적마다 등급(blocker, major, minor)과 근거를 달고, 리뷰한 커밋을 적습니다. must-fix 기준 이상의 지적은 같은 구현 워커에게 돌려보냅니다. 기준 이상의 지적이 없는 라운드가 나오거나 횟수를 다 쓰면 멈추고, 리뷰를 거친 최종 커밋만 받아들입니다. 구현 워커가 반박한 지적은 근거를 보고 판단해 보고하며, 루프를 끝내려고 버리지 않습니다.
+- 보고서는 상태, 바뀐 파일, 최종 커밋, 160자 이내의 쉬운 요약으로 시작하고, 그 아래에 세부 내용, 증거, 확인하지 못한 것, 후속 과제, 저장소 `AGENTS.md`에 넣을 메모를 둡니다. 버그 수정은 같은 재현 방법이 고치기 전에는 실패하고 고친 뒤에는 통과하는 것을 보여야 하며, mock 테스트는 사람이 보는 동작의 증거가 되지 않습니다.
+- 결정이 필요한 워커는 CLI의 질문 도구로 묻고, 오케스트레이터가 그 질문을 사용자에게 전한 뒤 고른 답으로 대답합니다.
+- herdr-app에서는 워커가 자기 터미널에 `orch.status`와 `orch.done` 라벨을 달고, `hc get`으로 볼 수 있습니다.
+- 오케스트레이터는 워커를 띄우기 전마다 남은 메모리를 확인합니다. `orch spawn`은 15% 미만이면 거부합니다.
+
 ## 토큰 사용을 줄이는 방법
 
 - `wait`는 herdr의 에이전트 상태를 기다리며 블록하므로, 워커가 일하는 동안 오케스트레이터는 토큰을 쓰지 않습니다. Claude Code는 이 명령을 백그라운드에서 실행하고 끝나면 알림을 받습니다.
@@ -83,6 +94,7 @@ node scripts/orch.mjs close [--force]
 |---|---|---|
 | `ORCH_MIN_PANE` | `80x24` | 가장 작은 pane 크기(열 x 행). 탭에 들어갈 pane 수를 정합니다 |
 | `ORCH_MAX_WORKERS` | `5` | 탭 크기와 관계없는 워커 수 상한 |
+| `ORCH_MIN_FREE_MEM` | `15` | 새 워커를 띄우는 데 필요한 남은 메모리 비율(%) |
 | `XDG_STATE_HOME` | `~/.local/state` (Windows는 `%LOCALAPPDATA%`) | `herdr-orch/`가 슬롯 상태, journal, 교훈, 보고서를 저장하는 위치 |
 
 오케스트레이터가 선호할 에이전트는 에이전트 지침(예: `AGENTS.md`)에 적으세요. 예: "herdr-orch로 오케스트레이션할 때는 기본으로 Claude Code 워커를 쓰고, Codex는 요청할 때만 써."

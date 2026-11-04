@@ -13,6 +13,8 @@ Choose the runtime before running commands:
 
 A worker must not start more workers unless explicitly assigned to do so. Keep planning, integration and the final response in the calling session.
 
+In both runtimes, follow [references/workflow.md](references/workflow.md) for the memory check before a launch, the brief and its Settings block, the review loop, accepting work, questions from workers and worktree cleanup. Workers follow [references/worker.md](references/worker.md).
+
 ## Older herdr
 
 You are the orchestrator in pane `$HERDR_PANE_ID`. Plan the work, split it, brief workers, check their results and integrate them. Keep planning, synthesis and the final review in this pane.
@@ -43,7 +45,8 @@ orch close [--force]                             # close free slots; --force clo
 - `--worktree` creates `../<repo>-<name>` on a new branch `<name>` from `--base` (default: the current branch of `--cwd`) and starts the worker there; spawning the same name with `--worktree` again reuses it. `orch worktrees` shows each worktree orch made: in use by a worker, uncommitted changes, commits not yet in its base, or merged. With `--clean` it removes the merged ones that no worker uses and deletes their branches. It never touches worktrees orch did not create. Pass `--base` to compare with another branch, such as the one you merged into.
 - `kind` is a herdr agent kind; `herdr agent` lists them. Claude Code workers start without MCP servers (`--strict-mcp-config`) to keep startup context and memory small; add `--mcp` when the task needs those tools.
 - `--role` applies the model and effort at the top of the role's file (`references/roles/<role>.md`): reviewer and debugger `opus` at `high`, researcher `opus` at `medium`, implementer `sonnet` at `medium`. The model is a Claude Code alias, so other kinds keep their configured model and take only the effort. `--model` and `--effort` override the role's values; use them to follow the user's preferences, and to raise an implementer that needs design judgment, or came back blocked or failed review twice, to `--model opus` or `--effort high`. `orch` passes them in each kind's form (Claude Code and Antigravity `--effort`, Codex `-c model_reasoning_effort=`). For other kinds and other flags, pass them after `--`; they come last.
-- `send` appends a report contract: the worker writes the full result to a report file whose first lines are status, changed files and a one-line summary, and replies with only the path. `wait` prints the path and those lines.
+- `spawn` refuses when less than 15% of memory is free (`ORCH_MIN_FREE_MEM`).
+- `send` appends a report contract: the worker reads `references/worker.md`, writes the full result to a report file whose first lines are status, changed files, final commit and a plain summary, and replies with only the path. `wait` prints the path and those lines. End each prompt with the Settings block from workflow.md.
 - `wait` without names waits for every worker that has an unfinished report. When a worker is blocked, `wait` also shows a herdr notification so the user sees it.
 - `orch` keeps a journal of spawns with the arguments each agent started with, prompts, results, stops and closes for the tab. After your context was compacted or restarted, or whenever you are unsure what is pending, run `orch log`: it lists the run's events and, for each worker's last prompt, whether its report is still unread, the worker is still working, or it exited without a report. A `close` that leaves no slots ends the run.
 
@@ -53,7 +56,7 @@ Use workers proactively: when one of these situations comes up, open the worker 
 
 | Situation | Worker |
 |---|---|
-| A worker reports `done` on a code change | `reviewer`, given the report path |
+| A worker reports `done` on a code change whose Settings say `Review: on` | `reviewer`, given the report path and the commit; run the review loop in workflow.md |
 | Two or more parts of the task touch different files or modules | `implementer` for each part, each in its own git worktree |
 | The task needs research that the implementation does not have to wait for | `researcher` |
 | The same build or test failure remains after two fix attempts | `debugger`, given the failing command and what was tried |
@@ -85,7 +88,7 @@ Before the final `close`, read `orch log` and update the files with your file to
 
 - Never give two workers overlapping files. For parallel writers, spawn each with `--worktree` and merge the branches yourself.
 - If `spawn` says the worker is blocked at startup, read the screen it prints. A folder trust prompt for a git worktree you created from the repository the user is working in may be accepted with `herdr agent send-keys <name> <keys>`; ask the user about any other prompt.
-- If `wait` reports `blocked` or no report, it prints the last lines of the worker's screen; to see the whole screen, run `herdr agent read <name> --source visible`, and for earlier output, `--source recent-unwrapped`. Do not answer approval dialogs yourself; ask the user.
+- If `wait` reports `blocked` or no report, it prints the last lines of the worker's screen; to see the whole screen, run `herdr agent read <name> --source visible`, and for earlier output, `--source recent-unwrapped`. Do not answer approval dialogs yourself; ask the user. Relay a worker's question as workflow.md describes, and answer it with `herdr agent send-keys` or `orch send`.
 - Some agents, such as Antigravity, can look idle while background work continues, so trust the report file rather than the state.
 - A timeout or error does not prove the prompt was lost. Inspect the worker before sending it again.
 - Never stop or close panes that `orch` did not create.

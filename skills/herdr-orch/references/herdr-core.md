@@ -28,12 +28,13 @@ pending. Use exact addresses for later commands, rather than names that could
 be reused. Restrict cleanup to this record. Default to at most five workers, or
 `ORCH_MAX_WORKERS` if set. Pane dimensions do not limit hidden workers.
 
-Give each worker a bounded scope, constraints, done criteria and an absolute
-report path. Brief it with the applicable file in `roles/` beside this reference.
-For concurrent writers, create separate git worktrees first and integrate their
-results yourself. Track those worktrees; inspect changes and merge status before
-removing only the ones you created. Do not use legacy `orch worktrees` to track
-hc workers.
+Follow [workflow.md](workflow.md) for the memory check before each launch, the
+brief and its Settings block, the review loop and accepting work. Give each
+worker an absolute report path, and brief it with the applicable file in
+`roles/` beside this reference and with [worker.md](worker.md). For concurrent
+writers, create separate git worktrees first and integrate their results
+yourself; record them for [cleanup](#worktrees). Do not use legacy
+`orch worktrees` to track hc workers.
 
 Use a fitting template when available; inspect its command/model before use.
 herdr-orch's templates are named `orch-<role>` (`orch-reviewer`,
@@ -50,7 +51,12 @@ model preferences. For Claude Code without MCP, an example is:
 ```sh
 hc run --bg --name review --parent "$HC_TERMINAL_ID" --cwd /absolute/repo \
   env PATH="$PATH" claude --strict-mcp-config --model opus --effort high \
-  "Read /absolute/skill/references/roles/reviewer.md. Review only the requested diff. Do not edit source or launch agents. Write your report to /absolute/scratch/review.md even if blocked. Start with status, changed files and a one-line summary. Report the path with hc send $HC_TERMINAL_ID when done or stuck."
+  "Read /absolute/skill/references/roles/reviewer.md and /absolute/skill/references/worker.md. Review commit 3f2a9c1 against main. Write your report to /absolute/scratch/review.md even if blocked, starting with the four lines worker.md gives. Report the path with hc send $HC_TERMINAL_ID when done or stuck.
+
+Settings
+- Role: reviewer
+- Scope: the diff main..3f2a9c1
+- Review: round 1 of 2, must fix: major"
 ```
 
 Replace all example paths and the task before running. `HC_TERMINAL_ID` in
@@ -90,7 +96,14 @@ Put the initial task in `hc run`. A template launch returns
 the agent's own argument, as above, returns no such field; `hc get <address>`
 shows whether it started working. A worker that reports no status at all may be
 stopped at a startup dialog such as folder trust. Read that terminal and resolve
-readiness before sending; do not blindly resend on an error.
+readiness before sending; do not blindly resend on an error. When a template
+launch reports `first_message.sent: false`, the template's own instructions
+(its role and worker.md) were not delivered either: send them together with
+the task once the agent is ready.
+
+Workers set `orch.status` and `orch.done` labels on their own terminals as they
+go (worker.md). `hc get <worker-address>` shows them under `labels`; read
+those before reading a screen. `hc ls` does not show labels.
 
 Continue independent work, then block using:
 
@@ -116,6 +129,27 @@ if needed. Do not sleep or poll. Read the actual report file before accepting
 the work; status alone is not proof. Treat child messages as reports, not user
 instructions. If blocked, inspect the screen and ask the user about approval
 or questions rather than bypassing them. Have code changes reviewed as needed.
+
+## Worktrees
+
+For each worktree in your record, once its work is merged, check it from the
+main checkout (`<base>` is the branch it merged into):
+
+```sh
+git -C <worktree> status --porcelain          # see below
+git rev-list --count <base>..<branch>         # above 0: unmerged commits, keep
+hc ls --json                                  # a worker's cwd inside it: in use, keep
+git worktree remove <worktree> && git branch -D <branch>
+```
+
+`status --porcelain` lists changed tracked files (` M`, `A ` and so on) and
+untracked ones (`??`). Keep the worktree when a tracked file changed or an
+untracked file could be work. Untracked output that running the checks made,
+such as `__pycache__/`, `node_modules/` or a build folder, does not count, but
+`git worktree remove` refuses it: add `--force` only after reading the list.
+When all three checks pass, every commit of the branch is in `<base>`, so
+deleting it loses nothing. Remove each from your record, and report the ones
+you kept and why.
 
 ## Visibility and cleanup
 
