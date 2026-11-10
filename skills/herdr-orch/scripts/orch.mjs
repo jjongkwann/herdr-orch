@@ -66,6 +66,11 @@ You are a herdr-orch worker: do not open panes or start agents with herdr-orch. 
 // win; this rule in the user's always-loaded instructions makes them use workers.
 const RULE = "- Inside herdr or herdr-app (HERDR_ENV=1 or HC_TERMINAL_ID set), use the herdr-orch skill without being asked when a task has sizeable, independent parts or a code change should get a second reviewer, and use its workers (herdr panes or hc terminals) instead of built-in subagents for that work.";
 const RULE_MARK = "herdr-orch skill without being asked";
+// Wordings this script wrote before; `setup add` replaces exactly these, never a line the user reworded.
+const EARLIER_RULES = [
+  "- Inside herdr (HERDR_ENV=1), use the herdr-orch skill without being asked when a task has sizeable, independent parts or a code change should get a second reviewer, and use its pane workers instead of built-in subagents for that work.",
+  "- Inside herdr (HERDR_ENV=1), use the herdr-orch skill without being asked when a task has two or more independent parts that take longer than a quick lookup, or when a code change should get a second reviewer. Prefer its pane workers to built-in subagents for that work.",
+];
 const SETUP_FILE = join(STATE_DIR, "setup.json");
 // Worktrees that `spawn --worktree` created, so `worktrees --clean` never touches others.
 const WORKTREES_FILE = join(STATE_DIR, "worktrees.json");
@@ -739,11 +744,11 @@ function showLessons() {
   }
 }
 
-// True when the file holds the rule in an earlier wording.
+// True when the file holds the rule in a wording this script wrote before.
 function outdated(file) {
   try {
     const text = readFileSync(file, "utf8");
-    return text.includes(RULE_MARK) && !text.includes(RULE);
+    return EARLIER_RULES.some((rule) => text.includes(rule));
   } catch {
     return false;
   }
@@ -763,7 +768,7 @@ function setup(positionals) {
   if (!action) {
     console.log(`rule:\n${RULE}\n`);
     if (decision.declined) console.log(`status: the user declined on ${decision.at.slice(0, 10)}; do not ask again`);
-    else if (decision.file && outdated(decision.file)) console.log(`status: ${decision.file} has an earlier wording of the rule; run setup add with that file to replace it, and tell the user`);
+    else if (decision.file && outdated(decision.file)) console.log(`status: ${decision.file} has an earlier wording of the rule, which does not cover herdr-app; show the user the rule above and ask once whether to replace it with setup add`);
     else if (decision.file) console.log(`status: added to ${decision.file} on ${decision.at.slice(0, 10)}; if it is gone, the user removed it, so do not ask again`);
     else console.log("status: not decided; ask the user once whether to add the rule to their global instructions");
     return;
@@ -778,10 +783,11 @@ function setup(positionals) {
   const text = existsSync(path) ? readFileSync(path, "utf8") : "";
   if (text.includes(RULE)) {
     console.log(`${path} already has the rule`);
-  } else if (text.includes(RULE_MARK)) {
-    // An earlier wording, such as the one that named only HERDR_ENV=1: replace its line.
-    writeFileSync(path, text.split("\n").map((line) => (line.includes(RULE_MARK) ? RULE : line)).join("\n"));
+  } else if (outdated(path)) {
+    writeFileSync(path, EARLIER_RULES.reduce((t, rule) => t.replaceAll(rule, RULE), text));
     console.log(`replaced an earlier wording of the rule in ${path}`);
+  } else if (text.includes(RULE_MARK)) {
+    console.log(`${path} has the rule in the user's own wording; left as it is`);
   } else {
     mkdirSync(dirname(path), { recursive: true });
     const gap = !text || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
