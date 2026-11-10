@@ -22,6 +22,25 @@ On macOS, Node's `os.freemem()` leaves out reclaimable memory and reads near
 0%; use `memory_pressure`. `orch spawn` runs this check itself. For an hc
 worker on another machine, run the command there with `hc exec --on <machine>`.
 
+## Raising a worker's model or effort
+
+Roles start at the model and effort their files set. Depart from them in this
+order; the user's preferences come first.
+
+- Start an implementer on `opus` when its part needs design judgment, or is a
+  migration or a performance optimization: a clear spec does not make those easy.
+- When a worker comes back blocked or fails review twice:
+  1. Check that the brief gave it a way to verify its own work, such as a test,
+     a build or a command in `Done when`. If not, add one and send the task again.
+  2. Raise the effort one level (an implementer to `high`).
+  3. Move to the next model up, one effort level lower than the smaller model
+     used (an implementer to `opus` at `medium`).
+- Do not raise effort past `high`. A reviewer or debugger for which `opus` at
+  `high` falls short goes to `fable` at `medium`, then `high`.
+
+A changed model or effort means a new worker: stop the old one and give the new
+one the earlier report path.
+
 ## The brief
 
 Every worker prompt states the goal, the files or directories in scope, the

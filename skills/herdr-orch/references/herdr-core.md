@@ -42,7 +42,8 @@ later commands, rather than names that could be reused. Restrict cleanup to the
 terminals that carry your run's label. Default to at most five workers, or
 `ORCH_MAX_WORKERS` if set. Pane dimensions do not limit hidden workers.
 
-Follow [workflow.md](workflow.md) for the memory check before each launch, the
+Follow [workflow.md](workflow.md) for the memory check before each launch,
+raising a worker's model or effort, the
 brief and its Settings block, the review loop and accepting work. Give each
 worker an absolute report path, and brief it with the applicable file in
 `roles/` beside this reference and with [worker.md](worker.md). For concurrent
@@ -99,10 +100,9 @@ Without a template, use the model and effort a role file sets at its top
 implementer `sonnet` at `medium`) unless the user's preferences or the task
 call for others. The model is a Claude Code alias; other agents keep their own
 model and take only the effort. Claude Code and Antigravity take
-`--effort <level>`, Codex `-c model_reasoning_effort=<level>`. Run an
-implementer that needs design judgment, or came back blocked or failed review
-twice, on `--model opus` or `--effort high`: launch it directly instead of from
-its template.
+`--effort <level>`, Codex `-c model_reasoning_effort=<level>`. To raise a
+worker's model or effort as workflow.md describes, launch it directly instead of
+from its template.
 Codex workers also need `--no-daemon`. Antigravity takes its first task with
 `-i "<task>"`. Never use one-shot print mode for agents.
 

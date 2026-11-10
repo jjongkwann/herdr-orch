@@ -52,7 +52,7 @@ npx skills add jjongkwann/herdr-orch
 
 herdr 안에서는 작업에 독립적인 부분이 있거나 코드 변경에 두 번째 리뷰어가 필요할 때, 요청하지 않아도 에이전트가 이 스킬을 씁니다. 워커는 `references/roles/`에 있는 역할 reviewer, implementer, researcher, debugger 중 하나로 지시를 받습니다. 작업은 역할이 아니라 컨텍스트를 기준으로 나누고, 계획은 오케스트레이터가 직접 세웁니다. 어떤 에이전트를 얼마나 아껴 쓸지에 대한 사용자 지침이 우선합니다.
 
-`--role`로 띄우면 워커는 역할 파일이 정한 모델과 reasoning effort로 시작합니다. reviewer와 debugger는 Opus `high`, researcher는 Opus `medium`, implementer는 Sonnet `medium`입니다. implementer는 완성된 지시를 받아 일하고 결과를 reviewer가 다시 보기 때문입니다. 모델은 Claude Code 별칭이므로 다른 에이전트는 설정된 모델을 그대로 쓰고 effort만 받습니다. `spawn --model`과 `--effort`는 역할 값을 덮어씁니다. 예를 들어 설계 판단이 필요한 implementer는 Opus로 올립니다. `orch`는 이 값을 종류별 형식으로 넘깁니다. Claude Code와 Antigravity에는 `--effort`, Codex에는 `-c model_reasoning_effort=`입니다. 선호하는 설정은 에이전트 지침에 적으세요. 예: "herdr-orch reviewer는 xhigh로 실행해." Claude Code는 모델이 지원하지 않는 단계를 받으면 지원하는 가장 높은 단계로 실행합니다. Codex에서는 그 단계를 지원하는 모델을 쓰세요.
+`--role`로 띄우면 워커는 역할 파일이 정한 모델과 reasoning effort로 시작합니다. reviewer와 debugger는 Opus `high`, researcher는 Opus `medium`, implementer는 Sonnet `medium`입니다. implementer는 완성된 지시를 받아 일하고 결과를 reviewer가 다시 보기 때문입니다. 모델은 Claude Code 별칭이므로 다른 에이전트는 설정된 모델을 그대로 쓰고 effort만 받습니다. `spawn --model`과 `--effort`는 역할 값을 덮어씁니다. 설계 판단이 필요하거나 마이그레이션, 성능 최적화인 부분을 맡는 implementer는 Opus로 시작합니다. 막히거나 리뷰에 두 번 실패한 워커는 먼저 스스로 검증할 수단을 받고, 그다음 effort를 한 단계 올리고, 그래도 안 되면 한 단계 큰 모델을 effort 한 단계 낮춰 씁니다. effort는 `high`를 넘기지 않습니다. Opus `high`로 부족하면 다음은 Fable `medium`입니다. `orch`는 이 값을 종류별 형식으로 넘깁니다. Claude Code와 Antigravity에는 `--effort`, Codex에는 `-c model_reasoning_effort=`입니다. 선호하는 설정은 에이전트 지침에 적으세요. 예: "herdr-orch implementer는 Opus로 실행해." Claude Code는 모델이 지원하지 않는 단계를 받으면 지원하는 가장 높은 단계로 실행합니다. Codex에서는 그 단계를 지원하는 모델을 쓰세요.
 
 오케스트레이터는 `scripts/orch.mjs`를 호출하며, herdr pane에서 직접 실행할 수도 있습니다.
 
