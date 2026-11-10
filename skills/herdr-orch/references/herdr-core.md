@@ -180,7 +180,9 @@ untracked ones (`??`). Keep the worktree when a tracked file changed or an
 untracked file could be work. Untracked output that running the checks made,
 such as `__pycache__/`, `node_modules/` or a build folder, does not count, but
 `git worktree remove` refuses it: add `--force` only after reading the list.
-When all three checks pass, every commit of the branch is in `<base>`, so
+After a rebase or squash merge the count stays above 0; then
+`git cherry <base> <branch>` marks each commit whose change is already in
+`<base>` with `-`. When all three checks pass, every commit of the branch is in `<base>`, so
 deleting it loses nothing. Report the ones you kept and why.
 
 ## Visibility and cleanup
