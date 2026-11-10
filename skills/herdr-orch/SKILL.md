@@ -7,7 +7,7 @@ description: Orchestrate coding agents in herdr or herdr-app using pane workers 
 
 Choose the runtime before running commands:
 
-- **herdr-app / herdr-core:** when `HC_TERMINAL_ID` is set, read [references/herdr-core.md](references/herdr-core.md) and follow only that procedure. Use `hc` directly; `orch.mjs` manages the older herdr pane API only.
+- **herdr-app / herdr-core:** when `HC_TERMINAL_ID` is set, read [references/herdr-core.md](references/herdr-core.md) and follow only that procedure. Use `hc` directly; of `orch.mjs`, only `setup` applies there, and the rest manages the older herdr pane API.
 - **Older herdr:** when `HERDR_ENV=1` and no `HC_TERMINAL_ID` is set, follow the procedure below.
 - **Neither variable:** do not guess the caller from the focused window, app names, folders or agent status. If the user says this session is in herdr-app, read the hc reference for how to obtain its address. Do not run legacy `orch spawn` or create workers until the caller is identified.
 

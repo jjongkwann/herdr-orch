@@ -4,6 +4,12 @@ Read `hc --skill` and `herdr-app --skill` for the installed commands, then
 `hc templates` for available roles. This procedure uses hc directly; do not
 run `orch.mjs`, legacy `herdr agent` commands, or its pane/grid workflow.
 
+herdr-orch delegates parts of the task this session is already doing: its
+workers are hidden hc children, and their results come back to you. Work the
+user wants tracked as a task of its own, with a card in Herdr's Tasks panel and
+their Accept, belongs to `herdr-task` where it is installed; do not rebuild that
+with herdr-orch workers.
+
 ## Identify the caller
 
 `HC_TERMINAL_ID` is a terminal address, not a pane ID. Confirm it with
@@ -20,12 +26,19 @@ An unavailable caller does not block read-only repository work.
 
 ## Dispatch and collect
 
-Keep a record of the terminal addresses returned by launches, their machines,
-the model and effort flags each started with, report paths and worktrees in a
-local file, such as one in your scratch folder,
-so it survives context compaction; reread it whenever you are unsure what is
-pending. Use exact addresses for later commands, rather than names that could
-be reused. Restrict cleanup to this record. Default to at most five workers, or
+Pick a short id for this run, such as `r` and the time (`r1412`), and launch
+every worker with `--label orch.run=<id>`, `--label orch.report=<report path>`
+and, when it has one, `--label orch.worktree=<path>`. The labels are the run's
+record, and they survive context compaction:
+
+```sh
+hc ls --all --label orch.run=<id>     # this run's workers, on every machine
+hc get <worker-address>               # its labels, and the flags it started with (argv)
+```
+
+Rerun these whenever you are unsure what is pending. Use exact addresses for
+later commands, rather than names that could be reused. Restrict cleanup to the
+terminals that carry your run's label. Default to at most five workers, or
 `ORCH_MAX_WORKERS` if set. Pane dimensions do not limit hidden workers.
 
 Follow [workflow.md](workflow.md) for the memory check before each launch, the
@@ -33,7 +46,7 @@ brief and its Settings block, the review loop and accepting work. Give each
 worker an absolute report path, and brief it with the applicable file in
 `roles/` beside this reference and with [worker.md](worker.md). For concurrent
 writers, create separate git worktrees first and integrate their results
-yourself; record them for [cleanup](#worktrees). Do not use legacy
+yourself; label them for [cleanup](#worktrees). Do not use legacy
 `orch worktrees` to track hc workers.
 
 Use a fitting template when available; inspect its command/model before use.
@@ -41,17 +54,25 @@ herdr-orch's templates are named `orch-<role>` (`orch-reviewer`,
 `orch-implementer`, `orch-researcher`, `orch-debugger`). Templates with other
 names belong to other tools, even when the role name matches (Shepherdr ships
 `reviewer`, `worker` and `assistant` with its own instructions); do not launch
-them for herdr-orch work. A template you write for a role takes the same name,
-so it does not replace another tool's file in `~/.config/herdr-core/templates`.
-A template's `command` cannot expand `$PATH`, so a template for a core with only
-the system PATH writes the PATH out (`env PATH=/Users/me/.local/bin:... claude`).
+them for herdr-orch work. When `hc templates` lacks them, ask the user once whether to install them, and
+launch directly if they decline. To install, copy each file in `templates/`
+beside `references/` to `~/.config/herdr-core/templates`
+(`%APPDATA%\herdr-core\templates` on Windows) with two replacements: `{{SKILL}}`
+becomes this skill's absolute directory, and `{{PATH}}` the folders that hold
+`claude` and `hc` followed by the system ones
+(`/Users/me/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin`), without
+spaces. A template's `command` cannot expand `$PATH`, and a core started over
+ssh has only the system PATH, so the PATH is written out. On Windows, drop
+`env PATH={{PATH}} ` from the command: new terminals there get the user's PATH.
+The names keep them from replacing another tool's files in that folder.
 Otherwise launch an interactive agent directly, following the user's agent and
 model preferences. For Claude Code without MCP, an example is:
 
 ```sh
 hc run --bg --name review --parent "$HC_TERMINAL_ID" --cwd /absolute/repo \
+  --label orch.run=r1412 --label orch.report=/absolute/scratch/review.md \
   env PATH="$PATH" claude --strict-mcp-config --model opus --effort high \
-  "Read /absolute/skill/references/roles/reviewer.md and /absolute/skill/references/worker.md. Review commit 3f2a9c1 against main. Write your report to /absolute/scratch/review.md even if blocked, starting with the four lines worker.md gives. Report the path with hc send $HC_TERMINAL_ID when done or stuck.
+  "First run: hc label \"\$HC_TERMINAL_ID\" orch.status=\"Reading the brief\" orch.done=0, and update both at each step. Read /absolute/skill/references/roles/reviewer.md and /absolute/skill/references/worker.md. Review commit 3f2a9c1 against main. Write your report to /absolute/scratch/review.md even if blocked, starting with the four lines worker.md gives. Report the path with hc send $HC_TERMINAL_ID when done or stuck.
 
 Settings
 - Role: reviewer
@@ -59,9 +80,13 @@ Settings
 - Review: round 1 of 2, must fix: major"
 ```
 
-Replace all example paths and the task before running. `HC_TERMINAL_ID` in
-this double-quoted prompt expands to the orchestrator's address; with a supplied
-caller address, use that exact address in both `--parent` and the prompt.
+Replace all example paths and the task before running. The unescaped
+`$HC_TERMINAL_ID` in this double-quoted prompt expands to the orchestrator's
+address; with a supplied caller address, use that exact address in both
+`--parent` and the prompt. The escaped one in the label command stays as written,
+so the worker's shell fills in its own address. Keep that label command at the
+start of a direct launch's brief: workers told about the labels only by
+worker.md did not set them. The `orch-<role>` templates already carry it.
 `env PATH="$PATH"` gives the worker your PATH: the core starts programs with the
 environment of whatever started the core, and a core started by another
 machine's ssh connection has only the system PATH, so neither the agent nor
@@ -77,19 +102,23 @@ model and take only the effort. Claude Code and Antigravity take
 implementer that needs design judgment, or came back blocked or failed review
 twice, on `--model opus` or `--effort high`: launch it directly instead of from
 its template.
-Codex workers also need `--no-daemon`. Never use one-shot print mode for agents.
+Codex workers also need `--no-daemon`. Antigravity takes its first task with
+`-i "<task>"`. Never use one-shot print mode for agents.
 
 A worker started with `--on <machine>` runs and writes its report on that
 machine, and its address is `<machine>/<id>`. Give it a report path there and
 read the report with `hc file read --on <machine> <path>`; your own file tools
-see only this machine. That machine's hc cannot reach your address, so leave
-`hc send` out of the worker's prompt and rely on `hc wait --children`, which
-reports remote children too. Leave out `env PATH="$PATH"` as well; check that
-the agent is found there with, for example,
+see only this machine. Leave out `--parent`: the launch makes the terminal you
+run it from the parent, while an address you pass is looked up on that machine,
+where it is missing (`not_found`) or names an unrelated terminal. That machine's
+hc cannot reach your address, so leave `hc send` out of the worker's prompt and
+rely on `hc wait --children`, which reports remote children too. Leave out
+`env PATH="$PATH"` as well: it is this machine's PATH. Check that the agent is
+found there with, for example,
 `hc exec --on <machine> -- sh -c 'command -v claude'`, or
-`hc exec --on <machine> -- where claude` on Windows. The launch reply for a
-Windows machine may not parse as JSON (an unescaped `cwd`); then look the worker
-up with `hc get <name>`.
+`hc exec --on <machine> -- where claude` on Windows. When it is not found, the
+core there has only the system PATH: launch that machine's `orch-<role>`
+template, or write its PATH out (`env PATH=/Users/me/.local/bin:/usr/bin:/bin claude`).
 
 Put the initial task in `hc run`. A template launch returns
 `first_message.sent`; false means the task was not submitted. A task passed as
@@ -103,7 +132,9 @@ the task once the agent is ready.
 
 Workers set `orch.status` and `orch.done` labels on their own terminals as they
 go (worker.md). `hc get <worker-address>` shows them under `labels`; read
-those before reading a screen. `hc ls` does not show labels.
+those before reading a screen. `hc ls` filters by label but does not print them.
+For a worker blocked at a question, `hc get` also gives the question and its
+options in `status.msg` (`kind: question`).
 
 Continue independent work, then block using:
 
@@ -119,8 +150,9 @@ A wait checks in after 180 seconds unless `--timeout` or the config's
 Code's Bash tool stops them after 120 seconds by default), pass a shorter
 `--timeout`, or run the wait in the background where the harness reports its
 exit. `hc get` and `hc read` mark a child's news as seen, so a later
-`--children any` does not return for it; the wait result's `children` still
-lists each child's status.
+`--children any` does not return for it. A wait that ends with `reason: children`
+or `timeout` lists each child's status in `children`; one that ends with
+`reason: message` has an empty list, so wait again or use `hc get`.
 
 Use `--children all` when all results are needed. Children waits also include
 other children of the caller: compare results against the task's recorded
@@ -132,7 +164,7 @@ or questions rather than bypassing them. Have code changes reviewed as needed.
 
 ## Worktrees
 
-For each worktree in your record, once its work is merged, check it from the
+For each worktree your run's workers carry in `orch.worktree`, once its work is merged, check it from the
 main checkout (`<base>` is the branch it merged into):
 
 ```sh
@@ -148,8 +180,7 @@ untracked file could be work. Untracked output that running the checks made,
 such as `__pycache__/`, `node_modules/` or a build folder, does not count, but
 `git worktree remove` refuses it: add `--force` only after reading the list.
 When all three checks pass, every commit of the branch is in `<base>`, so
-deleting it loses nothing. Remove each from your record, and report the ones
-you kept and why.
+deleting it loses nothing. Report the ones you kept and why.
 
 ## Visibility and cleanup
 
@@ -165,9 +196,14 @@ the notes; `hc wait --children` still reports that child.
 
 After accepting results, `hc kill <worker-address>` ends a worker and
 `hc rm <worker-address>` removes its finished terminal. Check state if either
-fails; remove only recorded workers. Preserve reports and any unmerged or dirty
+fails; remove only workers that carry your run's label. Read the
+`orch.worktree` labels before `hc rm`, which removes them with the terminal.
+Preserve reports and any unmerged or dirty
 worktrees, and report retained work. Do not close unrelated panes or terminals.
 
-The legacy `orch setup`, journal, lessons and slot commands do not manage hc
-runs. Do not run its setup to install a legacy-only activation rule for hc.
-Follow the user's existing guidance for learning and global configuration.
+The legacy journal, lessons and slot commands do not manage hc runs. Only
+`orch setup` applies here too, when Node.js is available: if your always-loaded
+instructions do not say when to use herdr-orch without being asked, run
+`node "<skill directory>/scripts/orch.mjs" setup` and follow SKILL.md's
+paragraph about it. Follow the user's existing guidance for learning and global
+configuration.
