@@ -2,7 +2,7 @@
 
 English | [한국어](README.ko.md)
 
-An agent skill that turns one [herdr](https://herdr.dev) tab into a small team of coding agents. The pane you start it from is the orchestrator. It opens worker panes beside itself as the work needs them, briefs each worker, waits for results without polling, and closes the panes when the work is done.
+An agent skill that turns one [herdr](https://herdr.dev) tab into a small team of coding agents. The pane you start it from is the orchestrator. It opens worker panes beside itself as the work needs them, briefs each worker, waits for results without polling, and closes the panes when the work is done. It works in herdr, where workers are panes beside the orchestrator, and in herdr-app, where workers are hidden hc terminals that are children of the orchestrator's terminal.
 
 ```
 ┌──────────────┬──────────────┬──────────────┐
@@ -24,7 +24,14 @@ instead of `orch.mjs`: background interactive workers, report files, blocking
 waits and cleanup restricted to workers it created. Workers stay hidden unless
 you ask to show them; the legacy pane grid and `ORCH_MIN_PANE` do not apply.
 The runtime manuals (`hc --skill`, `herdr-app --skill`) define the installed API.
-Node.js is only required for the older herdr helper.
+
+It needs `hc` and herdr-app. Node.js is only required for the older herdr helper
+and for `orch.mjs setup`.
+
+- **Role templates:** `skills/herdr-orch/templates/orch-<role>.md` ships one template each for the reviewer, implementer, researcher and debugger roles. When `hc templates` lacks them, the agent offers to install them into `~/.config/herdr-core/templates`, replacing `{{SKILL}}` with the skill's directory and `{{PATH}}` with the folders that hold `claude` and `hc`. Without them it launches workers directly.
+- **Run labels:** each worker is launched with `orch.run`, `orch.report` and `orch.worktree` labels. After the orchestrator's context is compacted, `hc ls --all --label orch.run=<id>` lists the run's workers.
+- **Other machines:** `--on <machine>` starts a worker on another machine. It writes its report there, and the orchestrator reads it with `hc file read --on <machine> <path>`.
+- **Tasks:** work you want as a tracked task, with its own card and an Accept step, belongs to `herdr-task`. herdr-orch delegates parts of the task the session is already doing.
 
 If an agent harness does not pass `HC_TERMINAL_ID` to its command environment,
 supply the exact terminal address explicitly after identifying it in Herdr.
@@ -45,7 +52,7 @@ npx skills add jjongkwann/herdr-orch
 
 Add `-g` to install it for your user instead of the current project, and `-a <agent>` to choose the agents.
 
-Agents choose skills from a one-line description, and their built-in subagents usually win. So the first time the skill runs, the agent offers to add one rule to your global instructions (`AGENTS.md`, `CLAUDE.md` or `GEMINI.md`) that tells it to use herdr-orch inside herdr without being asked. Nothing is written unless you agree, and a no is remembered. To add the rule yourself, run `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md` with the file your agent loads.
+Agents choose skills from a one-line description, and their built-in subagents usually win. So the first time the skill runs, the agent offers to add one rule to your global instructions (`AGENTS.md`, `CLAUDE.md` or `GEMINI.md`) that tells it to use herdr-orch inside herdr and herdr-app (`HERDR_ENV=1` or `HC_TERMINAL_ID`) without being asked. Nothing is written unless you agree, and a no is remembered. `orch.mjs setup` works in both runtimes. To add the rule yourself, run `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md` with the file your agent loads.
 
 ## Use
 
@@ -111,6 +118,8 @@ To say which agents the orchestrator should prefer, put it in your agent instruc
 ## Status
 
 Tested on macOS with herdr 0.9.5: Claude Code as the orchestrator and as workers end to end, and Codex and Antigravity CLI workers for start and stop. The script avoids shell-specific commands so it can run on Windows and Linux, but those platforms have not been tested end to end yet.
+
+The hc procedure was run end to end on 2026-11-10 with hc 0.1.19 and herdr-app 0.1.14 on macOS: Claude Code as the orchestrator; Claude Code, Codex and Antigravity workers on the same machine; Claude Code workers on a second Mac and on Windows through `--on`; and a worker's question answered with `hc keys`.
 
 ## License
 

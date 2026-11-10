@@ -2,7 +2,7 @@
 
 [English](README.md) | 한국어
 
-[herdr](https://herdr.dev) 탭 하나를 코딩 에이전트 여러 개가 함께 일하는 팀으로 바꾸는 에이전트 스킬입니다. 스킬을 시작한 pane이 오케스트레이터가 됩니다. 오케스트레이터는 작업에 필요한 만큼 옆에 워커 pane을 열고, 각 워커에게 작업을 지시하고, 폴링 없이 결과를 기다리고, 작업이 끝나면 pane을 닫습니다.
+[herdr](https://herdr.dev) 탭 하나를 코딩 에이전트 여러 개가 함께 일하는 팀으로 바꾸는 에이전트 스킬입니다. 스킬을 시작한 pane이 오케스트레이터가 됩니다. 오케스트레이터는 작업에 필요한 만큼 옆에 워커 pane을 열고, 각 워커에게 작업을 지시하고, 폴링 없이 결과를 기다리고, 작업이 끝나면 pane을 닫습니다. herdr에서는 오케스트레이터 옆의 워커 pane으로, herdr-app에서는 오케스트레이터 터미널의 자식인 숨겨진 hc 터미널로 워커를 실행합니다.
 
 ```
 ┌──────────────┬──────────────┬──────────────┐
@@ -18,7 +18,14 @@
 
 ## herdr-app / herdr-core
 
-이 스킬은 `hc` 명령으로 herdr-app도 지원합니다. `HC_TERMINAL_ID`가 설정되어 있으면 `orch.mjs` 대신 [hc 절차](skills/herdr-orch/references/herdr-core.md)를 따릅니다. 백그라운드 대화형 워커, 보고서 파일, 블로킹 대기를 쓰고, 정리는 자신이 만든 워커로 한정합니다. 워커는 보여 달라고 하지 않는 한 숨겨진 채로 실행되며, 기존 pane 그리드와 `ORCH_MIN_PANE`은 적용되지 않습니다. 설치된 API는 런타임 매뉴얼(`hc --skill`, `herdr-app --skill`)이 정의합니다. Node.js는 구 herdr용 헬퍼에만 필요합니다.
+이 스킬은 `hc` 명령으로 herdr-app도 지원합니다. `HC_TERMINAL_ID`가 설정되어 있으면 `orch.mjs` 대신 [hc 절차](skills/herdr-orch/references/herdr-core.md)를 따릅니다. 백그라운드 대화형 워커, 보고서 파일, 블로킹 대기를 쓰고, 정리는 자신이 만든 워커로 한정합니다. 워커는 보여 달라고 하지 않는 한 숨겨진 채로 실행되며, 기존 pane 그리드와 `ORCH_MIN_PANE`은 적용되지 않습니다. 설치된 API는 런타임 매뉴얼(`hc --skill`, `herdr-app --skill`)이 정의합니다.
+
+`hc`와 herdr-app이 필요합니다. Node.js는 구 herdr용 헬퍼와 `orch.mjs setup`에만 필요합니다.
+
+- **역할 템플릿:** `skills/herdr-orch/templates/orch-<role>.md`에 reviewer, implementer, researcher, debugger 템플릿이 하나씩 들어 있습니다. `hc templates`에 없으면 에이전트가 `~/.config/herdr-core/templates`에 설치할지 묻고, `{{SKILL}}`은 스킬 디렉터리로, `{{PATH}}`는 `claude`와 `hc`가 있는 폴더로 바꿉니다. 템플릿이 없으면 워커를 직접 실행합니다.
+- **실행 라벨:** 각 워커는 `orch.run`, `orch.report`, `orch.worktree` 라벨을 달고 시작합니다. 오케스트레이터의 컨텍스트가 압축된 뒤에는 `hc ls --all --label orch.run=<id>`로 그 실행의 워커를 찾습니다.
+- **다른 머신:** `--on <machine>`으로 다른 머신에서 워커를 시작합니다. 워커는 그 머신에 보고서를 쓰고, 오케스트레이터는 `hc file read --on <machine> <path>`로 읽습니다.
+- **작업(task):** 자체 카드와 Accept 단계가 있는 추적 작업으로 맡기려는 일은 `herdr-task`의 몫입니다. herdr-orch는 세션이 이미 하고 있는 작업의 일부를 위임합니다.
 
 에이전트 하네스가 명령 환경에 `HC_TERMINAL_ID`를 넘기지 않으면, Herdr에서 정확한 터미널 주소를 확인한 뒤 직접 지정하세요. 이 스킬은 포커스된 pane을 세션 식별 대신 쓰지 않습니다. Codex 세션은 명령이 hc 컨텍스트를 유지하도록 `--no-daemon`으로 시작해야 합니다.
 
@@ -36,7 +43,7 @@ npx skills add jjongkwann/herdr-orch
 
 현재 프로젝트 대신 사용자 전체에 설치하려면 `-g`를, 설치할 에이전트를 고르려면 `-a <agent>`를 붙이세요.
 
-에이전트는 한 줄짜리 설명을 보고 스킬을 고르는데, 대개 내장 서브에이전트가 선택됩니다. 그래서 스킬을 처음 실행하면 에이전트가 전역 지침(`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`)에 규칙 한 줄을 추가할지 묻습니다. herdr 안에서는 요청이 없어도 herdr-orch를 쓰라는 규칙입니다. 동의하지 않으면 아무것도 쓰지 않고, 거절한 것을 기억합니다. 규칙을 직접 추가하려면 에이전트가 읽는 파일을 지정해 `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md`를 실행하세요.
+에이전트는 한 줄짜리 설명을 보고 스킬을 고르는데, 대개 내장 서브에이전트가 선택됩니다. 그래서 스킬을 처음 실행하면 에이전트가 전역 지침(`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`)에 규칙 한 줄을 추가할지 묻습니다. herdr와 herdr-app(`HERDR_ENV=1` 또는 `HC_TERMINAL_ID`) 안에서는 요청이 없어도 herdr-orch를 쓰라는 규칙입니다. 동의하지 않으면 아무것도 쓰지 않고, 거절한 것을 기억합니다. `orch.mjs setup`은 두 런타임 모두에서 동작합니다. 규칙을 직접 추가하려면 에이전트가 읽는 파일을 지정해 `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md`를 실행하세요.
 
 ## 사용법
 
@@ -102,6 +109,8 @@ node scripts/orch.mjs close [--force]
 ## 상태
 
 macOS에서 herdr 0.9.5로 테스트했습니다. Claude Code는 오케스트레이터와 워커 모두 전체 흐름을, Codex와 Antigravity CLI 워커는 시작과 종료를 확인했습니다. 스크립트는 셸 전용 명령을 피하므로 Windows와 Linux에서도 실행할 수 있게 작성했지만, 이 플랫폼들에서는 아직 전체 흐름을 테스트하지 않았습니다.
+
+hc 절차는 2026-11-10에 macOS에서 hc 0.1.19, herdr-app 0.1.14로 전체 흐름을 실행했습니다. Claude Code가 오케스트레이터였고, 같은 머신에서 Claude Code, Codex, Antigravity 워커를, `--on`으로 두 번째 Mac과 Windows에서 Claude Code 워커를 실행했으며, 워커의 질문에는 `hc keys`로 답했습니다.
 
 ## 라이선스
 
