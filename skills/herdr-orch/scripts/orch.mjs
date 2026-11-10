@@ -64,7 +64,7 @@ You are a herdr-orch worker: do not open panes or start agents with herdr-orch. 
 
 // Agents pick skills from one-line descriptions, and built-in subagents usually
 // win; this rule in the user's always-loaded instructions makes them use workers.
-const RULE = "- Inside herdr (HERDR_ENV=1), use the herdr-orch skill without being asked when a task has two or more independent parts that take longer than a quick lookup, or when a code change should get a second reviewer. Prefer its pane workers to built-in subagents for that work.";
+const RULE = "- Inside herdr (HERDR_ENV=1), use the herdr-orch skill without being asked when a task has sizeable, independent parts or a code change should get a second reviewer, and use its pane workers instead of built-in subagents for that work.";
 const RULE_MARK = "herdr-orch skill without being asked";
 const SETUP_FILE = join(STATE_DIR, "setup.json");
 // Worktrees that `spawn --worktree` created, so `worktrees --clean` never touches others.

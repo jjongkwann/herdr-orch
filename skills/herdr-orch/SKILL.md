@@ -52,12 +52,12 @@ orch close [--force]                             # close free slots; --force clo
 
 ## When to use a worker
 
-Use workers proactively: when one of these situations comes up, open the worker without waiting for the user to ask. Split work by context, not by role: give a worker a piece that needs little from the rest of the task and returns a compact result. Plan the work yourself; the agent that writes the plan should be the one that changes it as results arrive.
+When one of these situations comes up and the part is big enough to repay a worker's startup and report, open the worker; the user does not have to ask. Split work by context, not by role: give a worker a piece that needs little from the rest of the task and returns a compact result. Plan the work yourself; the agent that writes the plan should be the one that changes it as results arrive.
 
 | Situation | Worker |
 |---|---|
 | A worker reports `done` on a code change whose Settings say `Review: on` | `reviewer`, given the report path and the commit; run the review loop in workflow.md |
-| Two or more parts of the task touch different files or modules | `implementer` for each part, each in its own git worktree |
+| Two or more sizeable parts of the task touch different files or modules | `implementer` for each part, each in its own git worktree |
 | The task needs research that the implementation does not have to wait for | `researcher` |
 | The same build or test failure remains after two fix attempts | `debugger`, given the failing command and what was tried |
 
