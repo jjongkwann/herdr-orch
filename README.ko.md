@@ -43,7 +43,7 @@ npx skills add jjongkwann/herdr-orch
 
 현재 프로젝트 대신 사용자 전체에 설치하려면 `-g`를, 설치할 에이전트를 고르려면 `-a <agent>`를 붙이세요.
 
-에이전트는 한 줄짜리 설명을 보고 스킬을 고르는데, 대개 내장 서브에이전트가 선택됩니다. 그래서 스킬을 처음 실행하면 에이전트가 전역 지침(`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`)에 규칙 한 줄을 추가할지 묻습니다. herdr와 herdr-app(`HERDR_ENV=1` 또는 `HC_TERMINAL_ID`) 안에서는 요청이 없어도 herdr-orch를 쓰라는 규칙입니다. 동의하지 않으면 아무것도 쓰지 않고, 거절한 것을 기억합니다. `orch.mjs setup`은 두 런타임 모두에서 동작합니다. 규칙을 직접 추가하려면 에이전트가 읽는 파일을 지정해 `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md`를 실행하세요.
+에이전트는 한 줄짜리 설명을 보고 스킬을 고르는데, 대개 내장 서브에이전트가 선택됩니다. 그래서 스킬을 처음 실행하면 에이전트가 전역 지침(`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`)에 규칙 한 줄을 추가할지 묻습니다. herdr와 herdr-app(`HERDR_ENV=1` 또는 `HC_TERMINAL_ID`) 안에서는 요청이 없어도 herdr-orch를 쓰라는 규칙입니다. 동의하지 않으면 아무것도 쓰지 않고, 거절한 것을 기억합니다. `orch.mjs setup`은 두 런타임 모두에서 동작하고, `setup add <file>`은 그 파일에 herdr만 언급하는 이전 문구의 규칙이 있으면 현재 문구로 바꿉니다. 규칙을 직접 추가하려면 에이전트가 읽는 파일을 지정해 `node <skill directory>/scripts/orch.mjs setup add ~/.codex/AGENTS.md`를 실행하세요.
 
 ## 사용법
 
