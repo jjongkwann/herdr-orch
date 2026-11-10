@@ -163,7 +163,7 @@ const sizeText = ({ width, height }) => `${Math.round(width)}x${Math.round(heigh
 
 // Read the caller's tab, its layout and this script's live slots in it.
 function openTab() {
-  if (process.env.HC_TERMINAL_ID) die("herdr-core session: use hc directly; read references/herdr-core.md (orch.mjs supports the older herdr only)");
+  if (process.env.HC_TERMINAL_ID) die("herdr-core session: use hc directly; read references/herdr-core.md (apart from setup, orch.mjs supports the older herdr only)");
   if (process.env.HERDR_ENV !== "1") die("not running inside a herdr pane");
   const orchestrator = process.env.HERDR_PANE_ID;
   const tab = process.env.HERDR_TAB_ID;
@@ -739,6 +739,16 @@ function showLessons() {
   }
 }
 
+// True when the file holds the rule in an earlier wording.
+function outdated(file) {
+  try {
+    const text = readFileSync(file, "utf8");
+    return text.includes(RULE_MARK) && !text.includes(RULE);
+  } catch {
+    return false;
+  }
+}
+
 // Offer the rule once; remember the user's answer so it is not asked again.
 function setup(positionals) {
   const [action, file] = positionals;
@@ -753,6 +763,7 @@ function setup(positionals) {
   if (!action) {
     console.log(`rule:\n${RULE}\n`);
     if (decision.declined) console.log(`status: the user declined on ${decision.at.slice(0, 10)}; do not ask again`);
+    else if (decision.file && outdated(decision.file)) console.log(`status: ${decision.file} has an earlier wording of the rule; run setup add with that file to replace it, and tell the user`);
     else if (decision.file) console.log(`status: added to ${decision.file} on ${decision.at.slice(0, 10)}; if it is gone, the user removed it, so do not ask again`);
     else console.log("status: not decided; ask the user once whether to add the rule to their global instructions");
     return;
@@ -765,8 +776,12 @@ function setup(positionals) {
   if (action !== "add" || !file) die("usage: setup [add <file> | decline]");
   const path = resolve(file.replace(/^~(?=$|[\\/])/, homedir()));
   const text = existsSync(path) ? readFileSync(path, "utf8") : "";
-  if (text.includes(RULE_MARK)) {
+  if (text.includes(RULE)) {
     console.log(`${path} already has the rule`);
+  } else if (text.includes(RULE_MARK)) {
+    // An earlier wording, such as the one that named only HERDR_ENV=1: replace its line.
+    writeFileSync(path, text.split("\n").map((line) => (line.includes(RULE_MARK) ? RULE : line)).join("\n"));
+    console.log(`replaced an earlier wording of the rule in ${path}`);
   } else {
     mkdirSync(dirname(path), { recursive: true });
     const gap = !text || text.endsWith("\n\n") ? "" : text.endsWith("\n") ? "\n" : "\n\n";
