@@ -22,8 +22,8 @@
 
 `hc`와 herdr-app이 필요합니다. Node.js는 구 herdr용 헬퍼와 `orch.mjs setup`에만 필요합니다.
 
-- **역할 템플릿:** `skills/herdr-orch/templates/orch-<role>.md`에 reviewer, implementer, researcher, debugger 템플릿이 하나씩 들어 있습니다. `hc templates`에 없으면 에이전트가 `~/.config/herdr-core/templates`에 설치할지 묻고, `{{SKILL}}`은 스킬 디렉터리로, `{{PATH}}`는 `claude`와 `hc`가 있는 폴더로 바꿉니다. 템플릿이 없으면 워커를 직접 실행합니다.
-- **실행 라벨:** 각 워커는 `orch.run`, `orch.report`, `orch.worktree` 라벨을 달고 시작합니다. 오케스트레이터의 컨텍스트가 압축된 뒤에는 `hc ls --all --label orch.run=<id>`로 그 실행의 워커를 찾습니다.
+- **역할 템플릿:** `skills/herdr-orch/templates/orch-<role>.md`에 reviewer, implementer, researcher, debugger 템플릿이 하나씩 들어 있습니다. `hc templates`에 없으면 에이전트가 `~/.config/herdr-core/templates`에 설치할지 묻고, `{{SKILL}}`은 스킬 디렉터리로, `{{PATH}}`는 `claude`와 `hc`가 있는 폴더 뒤에 시스템 폴더(`/usr/bin:/bin:/usr/sbin:/sbin`)를 이어 붙인 값으로 바꿉니다. 템플릿이 없으면 워커를 직접 실행합니다.
+- **실행 라벨:** 각 워커는 `orch.run`, `orch.report` 라벨과, worktree가 있으면 `orch.worktree` 라벨을 달고 시작합니다. 오케스트레이터의 컨텍스트가 압축된 뒤에는 `hc ls --all --label orch.run=<id>`로 그 실행의 워커를 찾습니다.
 - **다른 머신:** `--on <machine>`으로 다른 머신에서 워커를 시작합니다. 워커는 그 머신에 보고서를 쓰고, 오케스트레이터는 `hc file read --on <machine> <path>`로 읽습니다.
 - **작업(task):** 자체 카드와 Accept 단계가 있는 추적 작업으로 맡기려는 일은 `herdr-task`의 몫입니다. herdr-orch는 세션이 이미 하고 있는 작업의 일부를 위임합니다.
 

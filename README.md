@@ -28,8 +28,8 @@ The runtime manuals (`hc --skill`, `herdr-app --skill`) define the installed API
 It needs `hc` and herdr-app. Node.js is only required for the older herdr helper
 and for `orch.mjs setup`.
 
-- **Role templates:** `skills/herdr-orch/templates/orch-<role>.md` ships one template each for the reviewer, implementer, researcher and debugger roles. When `hc templates` lacks them, the agent offers to install them into `~/.config/herdr-core/templates`, replacing `{{SKILL}}` with the skill's directory and `{{PATH}}` with the folders that hold `claude` and `hc`. Without them it launches workers directly.
-- **Run labels:** each worker is launched with `orch.run`, `orch.report` and `orch.worktree` labels. After the orchestrator's context is compacted, `hc ls --all --label orch.run=<id>` lists the run's workers.
+- **Role templates:** `skills/herdr-orch/templates/orch-<role>.md` ships one template each for the reviewer, implementer, researcher and debugger roles. When `hc templates` lacks them, the agent offers to install them into `~/.config/herdr-core/templates`, replacing `{{SKILL}}` with the skill's directory and `{{PATH}}` with the folders that hold `claude` and `hc` followed by the system ones (`/usr/bin:/bin:/usr/sbin:/sbin`). Without them it launches workers directly.
+- **Run labels:** each worker is launched with `orch.run`, `orch.report` and, when it has one, `orch.worktree` labels. After the orchestrator's context is compacted, `hc ls --all --label orch.run=<id>` lists the run's workers.
 - **Other machines:** `--on <machine>` starts a worker on another machine. It writes its report there, and the orchestrator reads it with `hc file read --on <machine> <path>`.
 - **Tasks:** work you want as a tracked task, with its own card and an Accept step, belongs to `herdr-task`. herdr-orch delegates parts of the task the session is already doing.
 
